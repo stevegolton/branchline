@@ -1,12 +1,14 @@
 import m from "mithril";
 
 export interface ProjectRowAttrs {
-  id: string;
-  created: number;
-  modified: number;
-  active?: boolean;
-  onLoad: () => void;
-  onDelete: () => void;
+  readonly id: string;
+  readonly name?: string;
+  readonly created: number;
+  readonly modified: number;
+  readonly active?: boolean;
+  readonly onLoad: () => void;
+  readonly onDelete: () => void;
+  readonly onRename: (name: string) => void;
 }
 
 function formatDate(ts: number): string {
@@ -27,9 +29,17 @@ export const ProjectRow: m.Component<ProjectRowAttrs> = {
     const shortId = attrs.id.slice(0, 8);
     return m(
       ".project-row",
-      { class: attrs.active ? "active" : "", onclick: attrs.onLoad },
+      {
+        class: attrs.active ? "active" : "",
+        onclick: attrs.onLoad,
+        ondblclick: (e: PointerEvent) => {
+          e.stopPropagation();
+          const name = window.prompt("Rename project", shortId);
+          if (name) attrs.onRename(name);
+        },
+      },
       m(".project-row__meta", [
-        m(".project-row__id", shortId),
+        m(".project-row__id", attrs.name ?? shortId),
         m(".project-row__date", formatDate(attrs.modified)),
       ]),
       m(".project-row__actions", [

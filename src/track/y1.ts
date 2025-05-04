@@ -21,6 +21,7 @@ import {
   STRAIGHT_BODY_W,
   STROKE_WIDTH,
 } from "./common";
+import type { Tx2 } from "../geom";
 
 const STRAIGHT_STALK_TOP = MID_Y - STALK_W / 2;
 const STRAIGHT_STALK_BOTTOM = MID_Y + STALK_W / 2;
@@ -197,23 +198,54 @@ const piece: TrackPiece = {
         }),
       ]),
     ),
-  ports: [
-    {
-      offset: { x: 0, y: 0 },
-      rotation: 0,
-      direction: "in",
-    },
-    {
-      offset: { x: straightOutX, y: straightOutY },
-      rotation: 0,
-      direction: "out",
-    },
-    {
-      offset: { x: curveOutX, y: curveOutY },
-      rotation: 360 - 45,
-      direction: "out",
-    },
-  ],
+  ports: new Map([
+    [
+      "straight",
+      {
+        p: { x: straightOutX, y: straightOutY },
+        r: 0,
+        direction: "out",
+      },
+    ],
+    [
+      "curve",
+      {
+        p: { x: curveOutX, y: curveOutY },
+        r: 360 - 45,
+        direction: "out",
+      },
+    ],
+  ]),
+  paths: new Map([
+    [
+      "straight",
+      {
+        length: STRAIGHT_BODY_W,
+        path: (t: number): Tx2 => {
+          return {
+            r: 0,
+            p: { x: t, y: 0 },
+          };
+        },
+      },
+    ],
+    [
+      "curve",
+      {
+        length: CURVE_ANGLE * CURVE_R,
+        path: (t: number): Tx2 => {
+          const theta = t / CURVE_R;
+          return {
+            p: {
+              x: CURVE_R * Math.sin(theta),
+              y: CY + CURVE_R * Math.cos(theta) - MID_Y,
+            },
+            r: (-(theta * 180) / Math.PI + 360) % 360,
+          };
+        },
+      },
+    ],
+  ]),
 };
 
 export default piece;

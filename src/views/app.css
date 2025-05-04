@@ -1,0 +1,65 @@
+/* Snap-target ghost: render the piece as a soft grey silhouette so it
+   reads as a shadow rather than a translucent copy. */
+.ghost svg {
+  color: transparent; /* kills the stroke (stroke: currentColor) */
+}
+.ghost svg path {
+  fill: rgba(0, 0, 0);
+}
+.ghost .port {
+  display: none;
+}
+
+main {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+main:focus {
+  outline: solid rgb(43, 97, 215) 2px;
+}
+
+.add-tracks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.toolbar .add-track-btn {
+  margin: 0;
+  min-width: 36px;
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.toolbar kbd {
+  display: inline-block;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+}
+
+.near-track-highlight {
+  filter: drop-shadow(0 0 4px rgba(255, 0, 0, 0.8));
+}
+
+.ghost {
+  filter: brightness(0);
+}
+
+.tracks {
+  filter: drop-shadow(6px 6px 0 rgba(0, 0, 0));
+  /* position: absolute; */
+}
+
+.trains {
+  filter: drop-shadow(6px 6px 0 rgba(0, 0, 0));
+  /* position: absolute; */
+}

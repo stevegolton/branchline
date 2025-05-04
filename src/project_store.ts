@@ -1,14 +1,13 @@
-import type { Workspace } from "./workspace";
+import type { World } from "./world";
 
-const LOCAL_STORAGE_KEY = "workspaces";
+const LOCAL_STORAGE_KEY = "worlds";
 
 interface ProjectRecord {
-  created: number;
-  modified: number;
-  workspace: Workspace;
+  readonly name?: string;
+  readonly created: number;
+  readonly modified: number;
+  readonly workspace: World;
 }
-
-export type ProjectStore = ReturnType<typeof createProjectStore>;
 
 export function createProjectStore() {
   const localstorage = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -22,22 +21,27 @@ export function createProjectStore() {
         ([_key, value]) => value.created - value.created,
       );
     },
-    saveProject(uuid: string, workspace: Workspace) {
-      console.log("Saving workspace", uuid, workspace);
+    saveProject(id: string, world: World) {
       const now = Date.now();
-      const existing = parsed[uuid];
+      const existing = parsed[id];
       if (existing) {
-        parsed[uuid] = { ...existing, workspace, modified: now };
+        parsed[id] = { ...existing, workspace: world, modified: now };
       } else {
-        parsed[uuid] = { created: now, modified: now, workspace };
+        parsed[id] = { created: now, modified: now, workspace: world };
       }
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
     },
     getProject(uuid: string) {
       return parsed[uuid];
     },
-    deleteProject(uuid: string) {
-      delete parsed[uuid];
+    deleteProject(id: string) {
+      delete parsed[id];
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+    },
+    renameProject(id: string, name: string) {
+      const existing = parsed[id];
+      if (!existing) return;
+      parsed[id] = { ...existing, name };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
     },
   };

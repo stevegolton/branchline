@@ -11,6 +11,7 @@ import {
   STRAIGHT_BODY_W as BODY_W,
   STROKE_WIDTH,
 } from "./common";
+import { Tx2 } from "../geom";
 
 const STALK_TOP = MID_Y - STALK_W / 2;
 const STALK_BOTTOM = MID_Y + STALK_W / 2;
@@ -64,22 +65,30 @@ const piece: TrackPiece = {
         "stroke-linejoin": "round",
       }),
     ),
-  ports: [
-    {
-      offset: { x: 0, y: 0 },
-      rotation: 0,
-      direction: "in",
-    },
-    {
-      offset: { x: BODY_W, y: 0 },
-      rotation: 0,
-      direction: "out",
-    },
-  ],
-  path: (t) => ({
-    position: { x: BODY_W * t, y: 0 },
-    rotation: 0,
-  }),
+  ports: new Map([
+    [
+      "out",
+      {
+        p: { x: BODY_W, y: 0 },
+        r: 0,
+        direction: "out",
+      },
+    ],
+  ]),
+  paths: new Map([
+    [
+      "out",
+      {
+        length: BODY_W,
+        path: (t: number): Tx2 => {
+          return {
+            r: 0,
+            p: { x: t, y: 0 },
+          };
+        },
+      },
+    ],
+  ]),
 };
 
 export default piece;

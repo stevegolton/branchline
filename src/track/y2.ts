@@ -25,6 +25,7 @@ import {
   STRAIGHT_BODY_W,
   STROKE_WIDTH,
 } from "./common";
+import type { Tx2 } from "../geom";
 
 const STRAIGHT_STALK_TOP = MID_Y - STALK_W / 2;
 const STRAIGHT_STALK_BOTTOM = MID_Y + STALK_W / 2;
@@ -121,9 +122,6 @@ const curveD = [
 // x=STRAIGHT_BODY_W) — our local origin is at the female opening.
 // Only the curve branch is mirrored so it runs up-left from the straight's
 // male end rather than up-right from the female end.
-
-const inX = 0;
-const inY = 0;
 
 const junctionOutX = STRAIGHT_BODY_W;
 const junctionOutY = 0;
@@ -222,22 +220,58 @@ const piece: TrackPiece = {
         }),
       ]),
     ),
-  ports: [
-    // Female input on the left.
-    { offset: { x: inX, y: inY }, rotation: 0, direction: "in" },
-    // Male output at the shared junction on the right.
-    {
-      offset: { x: junctionOutX, y: junctionOutY },
-      rotation: 0,
-      direction: "out",
-    },
-    // Female input at the curve's far end (up-left, 225°).
-    {
-      offset: { x: curveInX, y: curveInY },
-      rotation: 225,
-      direction: "in",
-    },
-  ],
+  ports: new Map([
+    [
+      "straight",
+      {
+        p: { x: junctionOutX, y: junctionOutY },
+        r: 0,
+        direction: "out",
+      },
+    ],
+    [
+      "curve",
+      {
+        p: { x: curveInX, y: curveInY },
+        r: 225,
+        direction: "in",
+      },
+    ],
+  ]),
+  paths: new Map([
+    [
+      "straight",
+      {
+        length: STRAIGHT_BODY_W,
+        path: (t: number): Tx2 => {
+          return {
+            r: 0,
+            p: { x: t, y: 0 },
+          };
+        },
+      },
+    ],
+    [
+      "curve",
+      {
+        length: CURVE_ANGLE * CURVE_R,
+        path: (t: number): Tx2 => {
+          const theta = (t / (CURVE_ANGLE * CURVE_R)) * CURVE_ANGLE;
+          const raw = {
+            x: CURVE_R * Math.sin(theta),
+            y: CY + CURVE_R * Math.cos(theta),
+          };
+          return {
+            r: theta * (180 / Math.PI),
+            p: {
+              x: STRAIGHT_BODY_W - raw.x,
+              y: raw.y - MID_Y,
+            },
+          };
+        },
+      },
+    ],
+  ]),
 };
 
 export default piece;
