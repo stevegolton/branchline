@@ -1,0 +1,44 @@
+.track {
+  cursor: move;
+}
+
+.track.selected svg {
+  outline: solid rgb(43, 97, 215) 2px;
+}
+
+/* Snap-target ghost: render the piece as a soft grey silhouette so it
+   reads as a shadow rather than a translucent copy. */
+.ghost svg {
+  color: transparent; /* kills the stroke (stroke: currentColor) */
+}
+.ghost svg path {
+  fill: rgba(0, 0, 0, 0.50);
+}
+.ghost .port {
+  display: none;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+main {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+}
+
+main:focus {
+  outline: solid rgb(43, 97, 215) 2px;
+}
