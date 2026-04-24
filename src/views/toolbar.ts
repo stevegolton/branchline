@@ -3,9 +3,11 @@ import m from "mithril";
 export interface ToolbarAttrs {
   canUndo: boolean;
   canRedo: boolean;
+  isPlaying: boolean;
   onNewWorkspace: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onPlayPause: () => void;
 }
 
 export const Toolbar: m.Component<ToolbarAttrs> = {
@@ -55,6 +57,11 @@ export const Toolbar: m.Component<ToolbarAttrs> = {
           "button",
           { disabled: !attrs.canRedo, onclick: attrs.onRedo },
           "Redo",
+        ),
+        m(
+          "button",
+          { onclick: attrs.onPlayPause },
+          attrs.isPlaying ? "Stop" : "Play",
         ),
         children,
       ],

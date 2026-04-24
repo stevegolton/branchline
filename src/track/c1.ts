@@ -181,6 +181,16 @@ const piece: TrackPiece = {
       direction: "out",
     },
   ],
+  path: (t) => {
+    const theta = CURVE_ANGLE * t;
+    return {
+      position: {
+        x: CURVE_R * Math.sin(theta),
+        y: CURVE_R * (Math.cos(theta) - 1),
+      },
+      rotation: (-(theta * 180) / Math.PI + 360) % 360,
+    };
+  },
 };
 
 export default piece;

@@ -76,6 +76,10 @@ const piece: TrackPiece = {
       direction: "out",
     },
   ],
+  path: (t) => ({
+    position: { x: BODY_W * t, y: 0 },
+    rotation: 0,
+  }),
 };
 
 export default piece;

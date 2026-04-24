@@ -5,6 +5,11 @@ import "../styles.css";
 import { trackRegistry } from "../track_registry";
 import { createWorkspace, type DockedTrack } from "../workspace";
 import { createProjectStore } from "../project_store";
+import {
+  createSimulator,
+  trainWorld,
+  type TrainState,
+} from "../simulator";
 import { TrackPiece, type TrackPieceAttrs } from "./track_piece";
 import { Toolbar } from "./toolbar";
 import { ProjectRow } from "./project_row";
@@ -33,6 +38,30 @@ export function App(): m.Component {
     id: string;
     position: Vec2;
   } | null = null;
+  let trainState: TrainState | null = null;
+  // Past world transforms of the train, newest-first. Used to render trailing
+  // carriages at time-delayed positions.
+  const TRAIL_MAX_AGE_MS = 2000;
+  const trail: { ts: number; position: Vec2; rotation: number }[] = [];
+  // Time offsets (ms) for each carriage behind the engine.
+  const CARRIAGE_DELAYS_MS = [180, 360];
+  const simulator = createSimulator(
+    () => workspace.workspace,
+    () => trainState,
+    (s) => {
+      trainState = s;
+    },
+  );
+
+  function sampleTrail(ageMs: number): { position: Vec2; rotation: number } | null {
+    if (trail.length === 0) return null;
+    const target = trail[0].ts - ageMs;
+    // trail is newest-first; find the first sample at or older than target.
+    for (let i = 0; i < trail.length; i++) {
+      if (trail[i].ts <= target) return trail[i];
+    }
+    return trail[trail.length - 1];
+  }
 
   function secureProject() {
     const uuid = getCurrentHash();
@@ -398,6 +427,7 @@ export function App(): m.Component {
           {
             canUndo: workspace.canUndo,
             canRedo: workspace.canRedo,
+            isPlaying: simulator.running,
             onNewWorkspace: () => {
               location.hash = "";
               workspace = createWorkspace({ tracks: [] });
@@ -409,6 +439,10 @@ export function App(): m.Component {
             onRedo: () => {
               workspace.redo();
               secureProject();
+            },
+            onPlayPause: () => {
+              if (simulator.running) simulator.stop();
+              else simulator.start();
             },
           },
           store.listProjects().map(([key, project]) =>
@@ -463,6 +497,52 @@ export function App(): m.Component {
               )
             : null,
           trackPieces,
+          (() => {
+            if (!trainState) {
+              trail.length = 0;
+              return null;
+            }
+            const tw = trainWorld(trainState, workspace.workspace);
+            if (!tw) return null;
+
+            // Record this sample at the head of the trail; drop stale ones.
+            const now = performance.now();
+            trail.unshift({ ts: now, position: tw.position, rotation: tw.rotation });
+            const cutoff = now - TRAIL_MAX_AGE_MS;
+            while (trail.length > 0 && trail[trail.length - 1].ts < cutoff) {
+              trail.pop();
+            }
+
+            const blob = (
+              pos: Vec2,
+              color: string,
+              size: number,
+              z: number,
+            ) =>
+              m(".train", {
+                style: {
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: `${size}px`,
+                  height: `${size}px`,
+                  borderRadius: "50%",
+                  background: color,
+                  border: "3px solid black",
+                  transform: `translate(${pos.x - size / 2}px, ${pos.y - size / 2}px)`,
+                  pointerEvents: "none",
+                  zIndex: z,
+                },
+              });
+
+            return [
+              blob(tw.position, "crimson", 20, 7),
+              ...CARRIAGE_DELAYS_MS.map((delay, i) => {
+                const s = sampleTrail(delay);
+                return s ? blob(s.position, "#333", 16, 6 - i) : null;
+              }),
+            ];
+          })(),
         ),
       );
     },
