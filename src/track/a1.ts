@@ -9,6 +9,7 @@ import {
   STALK_L,
   STALK_W,
   STRAIGHT_BODY_W as BODY_W,
+  STROKE_WIDTH,
 } from "./common";
 
 const STALK_TOP = MID_Y - STALK_W / 2;
@@ -59,7 +60,7 @@ const piece: TrackPiece = {
         d,
         fill: FILL_COLOR,
         stroke: "currentColor",
-        "stroke-width": 1.25,
+        "stroke-width": STROKE_WIDTH,
         "stroke-linejoin": "round",
       }),
     ),

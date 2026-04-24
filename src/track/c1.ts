@@ -9,6 +9,7 @@ import {
   STALK_L,
   STALK_VISIBLE,
   STALK_W,
+  STROKE_WIDTH,
 } from "./common";
 
 const R_INNER = CURVE_R - BODY_H / 2;
@@ -161,7 +162,7 @@ const piece: TrackPiece = {
         d,
         fill: FILL_COLOR,
         stroke: "currentColor",
-        "stroke-width": 1.25,
+        "stroke-width": STROKE_WIDTH,
         "stroke-linejoin": "round",
       }),
     ),

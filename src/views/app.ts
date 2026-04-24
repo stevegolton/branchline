@@ -575,9 +575,37 @@ export function App(): m.Component {
                 rotateTrack(state.selectedId, "cw");
                 m.redraw();
               }
+            } else if (e.code === "KeyD") {
+              if (state.selectedId) {
+                const src = findTrackInTree(state.tracks, state.selectedId);
+                if (src) {
+                  const world = resolveWorldTransform(src.id);
+                  addTrack({
+                    kind: src.kind,
+                    flipped: src.flipped,
+                    orientation: world?.rotation ?? 0,
+                    position: spawnPos,
+                  });
+                  m.redraw();
+                }
+              }
             }
           },
         },
+        m(".help", [
+          m("div", [m("kbd", "N"), " / ", m("kbd", "C"), " / ", m("kbd", "Y"), " / ", m("kbd", "U"), " — add piece"]),
+          m("div", [m("kbd", "Q"), " / ", m("kbd", "E"), " — rotate"]),
+          m("div", [m("kbd", "F"), " — flip"]),
+          m("div", [m("kbd", "D"), " — duplicate"]),
+          m("div", [m("kbd", "Del"), " — remove"]),
+          m("div", "drag to pan · drag piece to dock"),
+          m("div", { style: { marginTop: "6px" } }, [
+            m("span", { style: { color: "rgb(43, 97, 215)" } }, "blue"),
+            " = selected · ",
+            m("span", { style: { color: "crimson" } }, "red"),
+            " = root",
+          ]),
+        ]),
         m(
           ".workspace",
           {

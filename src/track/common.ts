@@ -25,3 +25,5 @@ export const CURVE_R = CURVE_BODY_W / CURVE_ANGLE;
 // Straight body length: chosen so that two c1 curves + one a1 straight
 // form a right triangle (L = R · tan(90°/2) = R).
 export const STRAIGHT_BODY_W = CURVE_R;
+
+export const STROKE_WIDTH = 2;

@@ -23,6 +23,7 @@ import {
   STALK_VISIBLE,
   STALK_W,
   STRAIGHT_BODY_W,
+  STROKE_WIDTH,
 } from "./common";
 
 const STRAIGHT_STALK_TOP = MID_Y - STALK_W / 2;
@@ -207,7 +208,7 @@ const piece: TrackPiece = {
           d: straightD,
           fill: FILL_COLOR,
           stroke: "currentColor",
-          "stroke-width": 1.25,
+          "stroke-width": STROKE_WIDTH,
           "stroke-linejoin": "round",
         }),
       ]),
@@ -216,7 +217,7 @@ const piece: TrackPiece = {
           d: curveD,
           fill: FILL_COLOR,
           stroke: "currentColor",
-          "stroke-width": 1.25,
+          "stroke-width": STROKE_WIDTH,
           "stroke-linejoin": "round",
         }),
       ]),
