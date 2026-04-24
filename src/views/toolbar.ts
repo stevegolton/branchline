@@ -1,4 +1,5 @@
 import m from "mithril";
+import { trackRegistry } from "../track_registry";
 
 export interface ToolbarAttrs {
   canUndo: boolean;
@@ -8,6 +9,7 @@ export interface ToolbarAttrs {
   onUndo: () => void;
   onRedo: () => void;
   onPlayPause: () => void;
+  onAddTrack: (kind: keyof typeof trackRegistry) => void;
 }
 
 export const Toolbar: m.Component<ToolbarAttrs> = {
@@ -47,6 +49,20 @@ export const Toolbar: m.Component<ToolbarAttrs> = {
           m("span", { style: { color: "crimson" } }, "red"),
           " = root",
         ]),
+        m(
+          ".add-tracks",
+          (Object.keys(trackRegistry) as (keyof typeof trackRegistry)[]).map(
+            (kind) =>
+              m(
+                "button.add-track-btn",
+                {
+                  onclick: () => attrs.onAddTrack(kind),
+                  title: `Add ${kind}`,
+                },
+                kind,
+              ),
+          ),
+        ),
         m("button", { onclick: attrs.onNewWorkspace }, "New Workspace"),
         m(
           "button",

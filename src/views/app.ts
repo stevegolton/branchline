@@ -444,6 +444,18 @@ export function App(): m.Component {
               if (simulator.running) simulator.stop();
               else simulator.start();
             },
+            onAddTrack: (kind) => {
+              const center = {
+                x: window.innerWidth / 2 - workspaceOffset.x,
+                y: window.innerHeight / 2 - workspaceOffset.y,
+              };
+              workspace.addTrack({
+                kind,
+                orientation: 0,
+                position: center,
+              });
+              secureProject();
+            },
           },
           store.listProjects().map(([key, project]) =>
             m(ProjectRow, {
