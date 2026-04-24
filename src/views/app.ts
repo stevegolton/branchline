@@ -98,11 +98,9 @@ export function App(): m.Component {
       const currentHash = getCurrentHash();
       let noSuchWorkspace = false;
       if (currentHash !== previousUuid) {
-        console.log("Hash changed, loading workspace", currentHash);
         if (currentHash) {
           previousUuid = currentHash;
           const project = store.getProject(currentHash);
-          console.log("Loaded project", project);
           if (project) {
             workspace = createWorkspace(project.workspace);
           } else {
@@ -424,7 +422,6 @@ export function App(): m.Component {
                 location.hash = `#/project/${key}`;
               },
               onDelete: () => {
-                console.log("Removing track", key);
                 store.deleteProject(key);
                 if (getCurrentHash() === key) {
                   location.hash = "";

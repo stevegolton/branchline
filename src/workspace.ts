@@ -28,7 +28,6 @@ export function createWorkspace(workspace: Workspace) {
     history.push(state);
     future.length = 0; // New edits invalidate the redo stack.
     state = produce(state, fn);
-    console.log(`Updated workspace: ${JSON.stringify(state)}`);
   }
 
   return {
@@ -108,7 +107,6 @@ export function createWorkspace(workspace: Workspace) {
           );
         }
       });
-      console.log(state);
     },
     // Undock if docked, and move to position.
     moveTrack(trackId: string, newPosition: Vec2) {
