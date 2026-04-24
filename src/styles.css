@@ -1,5 +1,5 @@
 .workspace {
-  filter: drop-shadow(0 8px 0 rgba(0, 0, 0));
+  filter: drop-shadow(8px 8px 0 rgba(0, 0, 0));
 }
 
 .track {
@@ -37,6 +37,7 @@ main {
   position: relative;
   height: 100%;
   overflow: hidden;
+  touch-action: none;
   font-family:
     system-ui,
     -apple-system,
@@ -61,7 +62,7 @@ main:focus {
   user-select: none;
   z-index: 10;
   background: #fff;
-  border: 3px solid #000;
+  border: 1px solid #000;
   padding: 10px 12px;
   min-width: 220px;
 }
@@ -76,8 +77,9 @@ main:focus {
   padding: 4px 10px;
   background: #fff;
   color: #000;
-  border: 3px solid #000;
+  border: 1px solid #000;
   cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
 }
 
 .help button:hover:not(:disabled) {
@@ -98,8 +100,9 @@ main:focus {
   padding: 6px 8px;
   margin-top: 6px;
   background: #fff;
-  border: 3px solid #000;
+  border: 1px solid #000;
   cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
 }
 
 .project-row.active {
@@ -133,21 +136,6 @@ main:focus {
   gap: 4px;
 }
 
-.project-row__btn {
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  background: #fff;
-  color: #000;
-  border: 2px solid #000;
-}
-
-.project-row__btn:hover {
-  background: #000;
-  color: #fff;
-}
-
 .project-row.active .project-row__btn {
   background: #fff;
   color: #000;
@@ -167,5 +155,5 @@ main:focus {
   font-weight: 700;
   background: #fff;
   color: #000;
-  border: 2px solid #000;
+  border: 1px solid #000;
 }
