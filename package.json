@@ -14,6 +14,7 @@
     "vite": "^8.0.10"
   },
   "dependencies": {
+    "immer": "^11.1.4",
     "mithril": "^2.3.8"
   }
 }

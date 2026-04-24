@@ -1,146 +1,17 @@
 import m from "mithril";
 import { type Vec2 } from "../geom";
-import a1 from "../track/a1";
-import c1 from "../track/c1";
-import y1 from "../track/y1";
-import y2 from "../track/y2";
-import "../styles.css";
-import { TrackPiece, type TrackPieceAttrs } from "./track_piece";
 import { startDrag } from "../dom";
+import "../styles.css";
+import { trackRegistry } from "../track_registry";
+import { createWorkspace, type DockedTrack } from "../workspace";
+import { createProjectStore } from "../project_store";
+import { TrackPiece, type TrackPieceAttrs } from "./track_piece";
+import { Toolbar } from "./toolbar";
+import { ProjectRow } from "./project_row";
 
-const trackRegistry = {
-  a1,
-  c1,
-  y1,
-  y2,
-};
-
-type DockedTrack = Omit<Track, "position" | "orientation">;
-
-interface State {
-  tracks: Track[];
-  selectedId: string | null;
-}
-
-interface Track {
-  readonly id: string;
-  readonly kind: keyof typeof trackRegistry;
-  position: Vec2;
-  orientation: number;
-  flipped?: boolean;
-  // Port-indexed: slots may be undefined where no child is docked. Do not
-  // filter/compact — that would break index→port alignment.
-  docked?: (DockedTrack | undefined)[];
-}
-
-function createInitialState(): State {
-  return {
-    tracks: [
-      {
-        id: crypto.randomUUID(),
-        kind: "c1",
-        position: { x: 800, y: 600 },
-        orientation: 0,
-        docked: [
-          {
-            id: crypto.randomUUID(),
-            kind: "c1",
-            docked: [
-              {
-                id: crypto.randomUUID(),
-                kind: "c1",
-                docked: [
-                  {
-                    id: crypto.randomUUID(),
-                    kind: "c1",
-                    docked: [
-                      {
-                        id: crypto.randomUUID(),
-                        kind: "c1",
-                        docked: [
-                          {
-                            id: crypto.randomUUID(),
-                            kind: "c1",
-                            docked: [
-                              {
-                                id: crypto.randomUUID(),
-                                kind: "a1",
-                                docked: [
-                                  {
-                                    id: crypto.randomUUID(),
-                                    kind: "a1",
-                                    docked: [
-                                      {
-                                        id: crypto.randomUUID(),
-                                        kind: "c1",
-                                        flipped: true,
-                                        docked: [
-                                          {
-                                            id: crypto.randomUUID(),
-                                            kind: "c1",
-                                            flipped: true,
-                                            docked: [
-                                              {
-                                                id: crypto.randomUUID(),
-                                                kind: "c1",
-                                                flipped: true,
-                                                docked: [
-                                                  {
-                                                    id: crypto.randomUUID(),
-                                                    kind: "c1",
-                                                    flipped: true,
-                                                    docked: [
-                                                      {
-                                                        id: crypto.randomUUID(),
-                                                        kind: "c1",
-                                                        flipped: true,
-                                                        docked: [
-                                                          {
-                                                            id: crypto.randomUUID(),
-                                                            kind: "c1",
-                                                            flipped: true,
-                                                            docked: [
-                                                              {
-                                                                id: crypto.randomUUID(),
-                                                                kind: "a1",
-                                                                docked: [
-                                                                  {
-                                                                    id: crypto.randomUUID(),
-                                                                    kind: "a1",
-                                                                  },
-                                                                ],
-                                                              },
-                                                            ],
-                                                          },
-                                                        ],
-                                                      },
-                                                    ],
-                                                  },
-                                                ],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-    selectedId: null,
-  };
+function getCurrentHash(): string | null {
+  const match = location.hash.match(/^#\/project\/([0-9a-fA-F-]+)$/);
+  return match ? match[1] : null;
 }
 
 const DOCK_THRESHOLD = 40;
@@ -155,7 +26,24 @@ export function App(): m.Component {
     position: Vec2;
     rotation: number;
   } | null = null;
-  const state = createInitialState();
+  let workspace = createWorkspace({ tracks: [] });
+  const store = createProjectStore();
+  let selectedId: string | null = null;
+  let draggedTrack: {
+    id: string;
+    position: Vec2;
+  } | null = null;
+
+  function secureProject() {
+    const uuid = getCurrentHash();
+    if (uuid) {
+      store.saveProject(uuid, workspace.workspace);
+    } else {
+      const uuid = crypto.randomUUID();
+      store.saveProject(uuid, workspace.workspace);
+      location.hash = `#/project/${uuid}`;
+    }
+  }
 
   interface OutputPortWorld {
     owner: DockedTrack;
@@ -199,119 +87,7 @@ export function App(): m.Component {
     });
   }
 
-  // Remove a track from the tree. For roots (state.tracks) we splice the
-  // array. For docked slots we null the slot rather than splice, to keep
-  // sibling indices aligned with their owner's output-port indices.
-  function findAndRemoveTrack(
-    nodes: (Track | DockedTrack | undefined)[],
-    id: string,
-    isRootLevel: boolean,
-  ): DockedTrack | null {
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
-      if (!n) continue;
-      if (n.id === id) {
-        if (isRootLevel) {
-          nodes.splice(i, 1);
-        } else {
-          nodes[i] = undefined;
-        }
-        return n;
-      }
-      if (n.docked) {
-        const found = findAndRemoveTrack(n.docked, id, false);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  function findTrackInTree(
-    nodes: readonly (Track | DockedTrack | undefined)[],
-    id: string,
-  ): DockedTrack | null {
-    for (const n of nodes) {
-      if (!n) continue;
-      if (n.id === id) return n;
-      if (n.docked) {
-        const found = findTrackInTree(n.docked, id);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  // Walk the tree and find the world transform of a track by id. Returns
-  // { position, rotation } — the same values you'd pass as the piece's
-  // own root position/orientation to keep it in place visually.
-  function resolveWorldTransform(
-    trackId: string,
-  ): { position: Vec2; rotation: number } | null {
-    function walk(
-      track: DockedTrack,
-      translate: Vec2,
-      rotation: number,
-    ): { position: Vec2; rotation: number } | null {
-      if (track.id === trackId) {
-        return { position: { ...translate }, rotation };
-      }
-      if (!track.docked) return null;
-      const outPorts = trackRegistry[track.kind].ports.filter(
-        (p) => p.direction === "out",
-      );
-      const rad = (rotation * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const flipSign = track.flipped ? -1 : 1;
-      for (let i = 0; i < track.docked.length; i++) {
-        const child = track.docked[i];
-        if (!child) continue;
-        const port = outPorts[i];
-        const localX = port.offset.x;
-        const localY = port.offset.y * flipSign;
-        const childTranslate = {
-          x: translate.x + localX * cos - localY * sin,
-          y: translate.y + localX * sin + localY * cos,
-        };
-        const childRotation = (rotation + port.rotation * flipSign + 360) % 360;
-        const found = walk(child, childTranslate, childRotation);
-        if (found) return found;
-      }
-      return null;
-    }
-
-    for (const t of state.tracks) {
-      const found = walk(t, t.position, t.orientation);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function rotateTrack(trackId: string, direction: "cw" | "ccw") {
-    // If the track is docked, detach it first so rotation doesn't drag
-    // its siblings or change the parent's port layout.
-    let track = state.tracks.find((t) => t.id === trackId);
-    if (!track) {
-      const world = resolveWorldTransform(trackId);
-      const detached = findAndRemoveTrack(state.tracks, trackId, false);
-      if (!detached || !world) return;
-      track = {
-        ...detached,
-        position: world.position,
-        orientation: world.rotation,
-      };
-      state.tracks.push(track);
-    }
-    track.orientation =
-      direction === "cw"
-        ? (track.orientation + 45) % 360
-        : (track.orientation - 45 + 360) % 360;
-  }
-
-  function flipTrack(trackId: string) {
-    const track = findTrackInTree(state.tracks, trackId);
-    if (track) track.flipped = !track.flipped;
-  }
+  let previousUuid: string | null = null;
 
   return {
     oncreate({ dom }: m.VnodeDOM) {
@@ -319,6 +95,42 @@ export function App(): m.Component {
       (dom as HTMLElement).focus();
     },
     view() {
+      const currentHash = getCurrentHash();
+      let noSuchWorkspace = false;
+      if (currentHash !== previousUuid) {
+        console.log("Hash changed, loading workspace", currentHash);
+        if (currentHash) {
+          previousUuid = currentHash;
+          const project = store.getProject(currentHash);
+          console.log("Loaded project", project);
+          if (project) {
+            workspace = createWorkspace(project.workspace);
+          } else {
+            noSuchWorkspace = true;
+          }
+        } else {
+          workspace = createWorkspace({ tracks: [] });
+          previousUuid = null;
+        }
+      }
+
+      if (noSuchWorkspace) {
+        return m(
+          "",
+          'No such workspace: "' + currentHash + '"',
+          m(
+            "button",
+            {
+              onclick: () => {
+                location.hash = "";
+                workspace = createWorkspace({ tracks: [] });
+              },
+            },
+            "Back to safety",
+          ),
+        );
+      }
+
       const trackPieces: m.Children[] = [];
 
       function renderTrack(
@@ -329,6 +141,10 @@ export function App(): m.Component {
       ) {
         const { kind, docked, flipped } = track;
         const { view, ports } = trackRegistry[kind];
+
+        if (draggedTrack && track.id === draggedTrack.id) {
+          translate = draggedTrack.position;
+        }
 
         const pieceTransform =
           `translate(${translate.x}px, ${translate.y}px) rotate(${rotation}deg)` +
@@ -348,39 +164,20 @@ export function App(): m.Component {
                 height: 0,
                 color: isRoot ? "crimson" : "black",
               },
-              selected: state.selectedId === track.id,
+              selected: selectedId === track.id,
               ports,
-              onFlip: () => {
-                flipTrack(track.id);
-              },
-              onRemove: () => {
-                findAndRemoveTrack(state.tracks, track.id, true);
-              },
               onpointerdown: (e: PointerEvent) => {
                 e.stopPropagation(); // Prevent the main view's pointerdown from firing
                 const node = e.currentTarget as HTMLElement;
-                state.selectedId = track.id;
+                selectedId = track.id;
                 startDrag(e, node, 4, {
                   onDragStart: () => {
-                    // If we're a root level node, do nothing
-                    let rootTrack = state.tracks.find((t) => t.id === track.id);
-                    if (!rootTrack) {
-                      // Detach this track from its parent's docked slot (null
-                      // the slot rather than splicing, to keep port alignment).
-                      findAndRemoveTrack(state.tracks, track.id, false);
+                    // workspace.moveTrack(track.id, translate);
+                    // secureProject();
 
-                      // Add this track to the root level with the same position as the parent
-                      rootTrack = {
-                        ...track,
-                        orientation: rotation,
-                        position: {
-                          x: translate.x,
-                          y: translate.y,
-                        },
-                      };
-                      state.tracks.push(rootTrack);
-                      m.redraw();
-                    }
+                    let currentPos = translate;
+                    draggedTrack = { id: track.id, position: currentPos };
+
                     // Find the output port closest to the dragged piece's
                     // input, across the whole tree (minus its own subtree).
                     // Returns the nearest candidate and its distance — even
@@ -390,15 +187,15 @@ export function App(): m.Component {
                       candidate: OutputPortWorld;
                       distance: number;
                     } | null => {
-                      const inputWorld = rootTrack.position;
+                      const inputWorld = currentPos;
                       const candidates: OutputPortWorld[] = [];
-                      for (const t of state.tracks) {
+                      for (const t of workspace.workspace.tracks) {
                         collectOutputPorts(
                           t,
                           t.position,
-                          t.orientation,
+                          t.orientation ?? 0,
                           candidates,
-                          rootTrack.id,
+                          track.id,
                         );
                       }
                       let best: OutputPortWorld | null = null;
@@ -413,27 +210,29 @@ export function App(): m.Component {
                           bestDist = d;
                         }
                       }
-                      return best ? { candidate: best, distance: bestDist } : null;
+                      return best
+                        ? { candidate: best, distance: bestDist }
+                        : null;
                     };
 
                     return {
                       onDrag(deltaX, deltaY) {
-                        rootTrack.position = {
-                          x: rootTrack.position.x + deltaX,
-                          y: rootTrack.position.y + deltaY,
+                        currentPos = {
+                          x: currentPos.x + deltaX,
+                          y: currentPos.y + deltaY,
                         };
+                        draggedTrack = { id: track.id, position: currentPos };
                         const nearest = findNearestPort();
                         if (nearest && nearest.distance < DOCK_THRESHOLD) {
                           snapGhost = {
-                            kind: rootTrack.kind,
-                            flipped: rootTrack.flipped,
+                            kind: track.kind,
+                            flipped: track.flipped,
                             position: nearest.candidate.world,
                             rotation: nearest.candidate.rotation,
                           };
                         } else {
                           snapGhost = null;
                         }
-                        m.redraw();
                       },
                       onDragStop() {
                         const nearest = findNearestPort();
@@ -444,24 +243,18 @@ export function App(): m.Component {
                         snapGhost = null;
 
                         if (best) {
-                          const removed = findAndRemoveTrack(
-                            state.tracks,
-                            rootTrack.id,
-                            true,
+                          workspace.dockTrack(
+                            track.id,
+                            best.owner.id,
+                            best.portIndex,
                           );
-                          if (removed) {
-                            // Strip root-only fields when re-docking.
-                            const {
-                              position: _p,
-                              orientation: _o,
-                              ...docked
-                            } = removed as Track;
-                            best.owner.docked ??= [];
-                            best.owner.docked[best.portIndex] =
-                              docked as DockedTrack;
-                            m.redraw();
-                          }
+                          secureProject();
+                        } else {
+                          workspace.moveTrack(track.id, currentPos);
+                          secureProject();
                         }
+
+                        draggedTrack = null;
                       },
                     };
                   },
@@ -472,47 +265,39 @@ export function App(): m.Component {
           ),
         );
 
-        if (docked) {
-          docked.forEach((d, i) => {
-            if (!d) return;
-            // Work out the transform of each docked piece
-            const outputPorts = trackRegistry[kind].ports.filter(
-              (p) => p.direction === "out",
-            );
-            const port = outputPorts[i];
+        docked?.forEach((d, i) => {
+          if (!d) return;
+          // Work out the transform of each docked piece
+          const outputPorts = trackRegistry[kind].ports.filter(
+            (p) => p.direction === "out",
+          );
+          const port = outputPorts[i];
 
-            // Mirror the port into the piece's local frame if flipped, then
-            // rotate into the parent's world frame and add the parent's
-            // translate. Children do not inherit the flip — only the port
-            // geometry is mirrored so they attach on the correct side.
-            const flipSign = flipped ? -1 : 1;
-            const localX = port.offset.x;
-            const localY = port.offset.y * flipSign;
-            const rad = (rotation * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
-            const dockTranslate = {
-              x: translate.x + localX * cos - localY * sin,
-              y: translate.y + localX * sin + localY * cos,
-            };
+          // Mirror the port into the piece's local frame if flipped, then
+          // rotate into the parent's world frame and add the parent's
+          // translate. Children do not inherit the flip — only the port
+          // geometry is mirrored so they attach on the correct side.
+          const flipSign = flipped ? -1 : 1;
+          const localX = port.offset.x;
+          const localY = port.offset.y * flipSign;
+          const rad = (rotation * Math.PI) / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          const dockTranslate = {
+            x: translate.x + localX * cos - localY * sin,
+            y: translate.y + localX * sin + localY * cos,
+          };
 
-            const dockRotation =
-              (rotation + port.rotation * flipSign + 360) % 360;
+          const dockRotation =
+            (rotation + port.rotation * flipSign + 360) % 360;
 
-            renderTrack(d, dockTranslate, dockRotation, false);
-          });
-        }
+          renderTrack(d, dockTranslate, dockRotation, false);
+        });
       }
 
-      state.tracks.forEach((x) =>
-        renderTrack(x, x.position, x.orientation, true),
+      workspace.workspace.tracks.forEach((x) =>
+        renderTrack(x, x.position, x.orientation ?? 0, true),
       );
-
-      function addTrack(track: Omit<Track, "id">) {
-        const id = crypto.randomUUID();
-        state.tracks.push({ id, ...track });
-        state.selectedId = id;
-      }
 
       return m(
         "main",
@@ -530,13 +315,11 @@ export function App(): m.Component {
                       x: workspaceOffset.x + deltaX,
                       y: workspaceOffset.y + deltaY,
                     };
-                    m.redraw();
                   },
                 };
               },
               onDragFailed: () => {
-                state.selectedId = null;
-                m.redraw();
+                selectedId = null;
               },
             });
           },
@@ -547,65 +330,110 @@ export function App(): m.Component {
               y: mousePos.y - workspaceOffset.y,
             };
             if (e.code === "KeyN") {
-              addTrack({ kind: "a1", orientation: 0, position: spawnPos });
+              workspace.addTrack({
+                kind: "a1",
+                orientation: 0,
+                position: spawnPos,
+              });
+              // The moment we edit anything - save the workspace, ensure it has a uuid
+              secureProject();
             } else if (e.code === "KeyC") {
-              addTrack({ kind: "c1", orientation: 0, position: spawnPos });
+              workspace.addTrack({
+                kind: "c1",
+                orientation: 0,
+                position: spawnPos,
+              });
+              secureProject();
             } else if (e.code === "KeyY") {
-              addTrack({ kind: "y1", orientation: 0, position: spawnPos });
+              workspace.addTrack({
+                kind: "y1",
+                orientation: 0,
+                position: spawnPos,
+              });
+              secureProject();
             } else if (e.code === "KeyU") {
-              addTrack({ kind: "y2", orientation: 0, position: spawnPos });
+              workspace.addTrack({
+                kind: "y2",
+                orientation: 0,
+                position: spawnPos,
+              });
+              secureProject();
             } else if (e.code === "Delete" || e.code === "Backspace") {
-              if (state.selectedId) {
-                findAndRemoveTrack(state.tracks, state.selectedId, true);
-                state.selectedId = null;
-                m.redraw();
+              if (selectedId) {
+                workspace.removeTrack(selectedId);
+                selectedId = null;
+                secureProject();
               }
             } else if (e.code === "KeyF") {
-              if (state.selectedId) {
-                flipTrack(state.selectedId);
-                m.redraw();
+              if (selectedId) {
+                workspace.flipTrack(selectedId);
+                secureProject();
               }
             } else if (e.code === "KeyQ") {
-              if (state.selectedId) {
-                rotateTrack(state.selectedId, "ccw");
-                m.redraw();
+              if (selectedId) {
+                workspace.rotateTrack(selectedId, "ccw");
+                secureProject();
               }
             } else if (e.code === "KeyE") {
-              if (state.selectedId) {
-                rotateTrack(state.selectedId, "cw");
-                m.redraw();
+              if (selectedId) {
+                workspace.rotateTrack(selectedId, "cw");
+                secureProject();
               }
             } else if (e.code === "KeyD") {
-              if (state.selectedId) {
-                const src = findTrackInTree(state.tracks, state.selectedId);
-                if (src) {
-                  const world = resolveWorldTransform(src.id);
-                  addTrack({
-                    kind: src.kind,
-                    flipped: src.flipped,
-                    orientation: world?.rotation ?? 0,
-                    position: spawnPos,
-                  });
-                  m.redraw();
-                }
+              if (selectedId) {
+                const id = workspace.duplicateTrack(selectedId, spawnPos);
+                selectedId = id;
+                secureProject();
               }
+            } else if (e.code === "KeyZ" && (e.ctrlKey || e.metaKey)) {
+              if (e.shiftKey) {
+                workspace.redo();
+              } else {
+                workspace.undo();
+              }
+              secureProject();
             }
           },
         },
-        m(".help", [
-          m("div", [m("kbd", "N"), " / ", m("kbd", "C"), " / ", m("kbd", "Y"), " / ", m("kbd", "U"), " — add piece"]),
-          m("div", [m("kbd", "Q"), " / ", m("kbd", "E"), " — rotate"]),
-          m("div", [m("kbd", "F"), " — flip"]),
-          m("div", [m("kbd", "D"), " — duplicate"]),
-          m("div", [m("kbd", "Del"), " — remove"]),
-          m("div", "drag to pan · drag piece to dock"),
-          m("div", { style: { marginTop: "6px" } }, [
-            m("span", { style: { color: "rgb(43, 97, 215)" } }, "blue"),
-            " = selected · ",
-            m("span", { style: { color: "crimson" } }, "red"),
-            " = root",
-          ]),
-        ]),
+        m(
+          Toolbar,
+          {
+            canUndo: workspace.canUndo,
+            canRedo: workspace.canRedo,
+            onNewWorkspace: () => {
+              location.hash = "";
+              workspace = createWorkspace({ tracks: [] });
+            },
+            onUndo: () => {
+              workspace.undo();
+              secureProject();
+            },
+            onRedo: () => {
+              workspace.redo();
+              secureProject();
+            },
+          },
+          store.listProjects().map(([key, project]) =>
+            m(ProjectRow, {
+              key,
+              id: key,
+              created: project.created,
+              modified: project.modified,
+              active: getCurrentHash() === key,
+              onLoad: () => {
+                location.hash = `#/project/${key}`;
+              },
+              onDelete: () => {
+                console.log("Removing track", key);
+                store.deleteProject(key);
+                if (getCurrentHash() === key) {
+                  location.hash = "";
+                  workspace = createWorkspace({ tracks: [] });
+                }
+              },
+            }),
+          ),
+        ),
         m(
           ".workspace",
           {
@@ -643,3 +471,5 @@ export function App(): m.Component {
     },
   };
 }
+
+window.addEventListener("hashchange", m.redraw);

@@ -1,3 +1,5 @@
+import m from "mithril";
+
 // Adds an event listener to a DOM element, returning a disposable to remove it.
 export function bindEventListener<K extends keyof HTMLElementEventMap>(
   element: EventTarget,
@@ -43,6 +45,7 @@ export function startDrag(
       handlers = startHandlers.onDragStart?.();
     }
     handlers?.onDrag?.(ev.movementX, ev.movementY);
+    m.redraw();
   }
 
   function onPointerUp(ev: PointerEvent) {
@@ -55,6 +58,7 @@ export function startDrag(
     const deltaX = ev.clientX - startX;
     const deltaY = ev.clientY - startY;
     handlers.onDragStop?.(deltaX, deltaY);
+    m.redraw();
   }
 
   element.addEventListener("pointermove", onPointerMove);
