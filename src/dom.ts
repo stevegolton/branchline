@@ -38,6 +38,7 @@ export function startDrag(
   let handlers: DragHandlers | undefined;
 
   function onPointerMove(ev: PointerEvent) {
+    m.redraw();
     const deltaX = ev.clientX - startX;
     const deltaY = ev.clientY - startY;
     if (!handlers) {
@@ -45,10 +46,10 @@ export function startDrag(
       handlers = startHandlers.onDragStart?.();
     }
     handlers?.onDrag?.(ev.movementX, ev.movementY);
-    m.redraw();
   }
 
   function onPointerUp(ev: PointerEvent) {
+    m.redraw();
     element.removeEventListener("pointermove", onPointerMove);
     element.removeEventListener("pointerup", onPointerUp);
     if (!handlers) {
@@ -58,7 +59,6 @@ export function startDrag(
     const deltaX = ev.clientX - startX;
     const deltaY = ev.clientY - startY;
     handlers.onDragStop?.(deltaX, deltaY);
-    m.redraw();
   }
 
   element.addEventListener("pointermove", onPointerMove);
