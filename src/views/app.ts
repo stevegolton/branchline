@@ -3,16 +3,71 @@ import { type Vec2 } from "../geom";
 import { startDrag } from "../dom";
 import "../styles.css";
 import { trackRegistry } from "../track_registry";
-import { createWorkspace, type DockedTrack } from "../workspace";
-import { createProjectStore } from "../project_store";
 import {
-  createSimulator,
-  trainWorld,
-  type TrainState,
-} from "../simulator";
+  createWorkspace,
+  type DockedTrack,
+  type Workspace,
+} from "../workspace";
+import { createProjectStore } from "../project_store";
+import { createSimulator, trainWorld, type TrainState } from "../simulator";
 import { TrackPiece, type TrackPieceAttrs } from "./track_piece";
 import { Toolbar } from "./toolbar";
 import { ProjectRow } from "./project_row";
+
+interface NormalizedTrack {
+  readonly id: string;
+  readonly kind: keyof typeof trackRegistry;
+  readonly position: Vec2;
+  readonly orientation: number;
+  readonly flipped: boolean;
+  readonly isRoot: boolean; // Whether this track is a root track (not docked to any other)
+}
+
+// Normalize a workspace's tree of tracks into a flat list where each track
+// peice has absolute world coordinates. This is more convenient for working
+// with simulations.
+function normalizeTracks(workspace: Workspace): NormalizedTrack[] {
+  const result: NormalizedTrack[] = [];
+  function addTrack(
+    track: DockedTrack,
+    position: Vec2,
+    orientation: number,
+    isRoot = false,
+  ) {
+    result.push({
+      id: track.id,
+      kind: track.kind,
+      position,
+      orientation,
+      flipped: track.flipped ?? false,
+      isRoot,
+    });
+    const manifest = trackRegistry[track.kind];
+    const ports = manifest.ports;
+    const outPorts = ports.filter((p) => p.direction === "out");
+    const rad = (orientation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const flipSign = track.flipped ? -1 : 1;
+    outPorts.forEach((port, i) => {
+      const localX = port.offset.x;
+      const localY = port.offset.y * flipSign;
+      const world = {
+        x: position.x + localX * cos - localY * sin,
+        y: position.y + localX * sin + localY * cos,
+      };
+      const portRotation = (orientation + port.rotation * flipSign + 360) % 360;
+      const docked = track.docked?.[i];
+      if (docked) {
+        addTrack(docked, world, portRotation);
+      }
+    });
+  }
+  workspace.tracks.forEach((t) =>
+    addTrack(t, t.position, t.orientation ?? 0, true),
+  );
+  return result;
+}
 
 function getCurrentHash(): string | null {
   const match = location.hash.match(/^#\/project\/([0-9a-fA-F-]+)$/);
@@ -53,7 +108,9 @@ export function App(): m.Component {
     },
   );
 
-  function sampleTrail(ageMs: number): { position: Vec2; rotation: number } | null {
+  function sampleTrail(
+    ageMs: number,
+  ): { position: Vec2; rotation: number } | null {
     if (trail.length === 0) return null;
     const target = trail[0].ts - ageMs;
     // trail is newest-first; find the first sample at or older than target.
@@ -118,12 +175,107 @@ export function App(): m.Component {
 
   let previousUuid: string | null = null;
 
+  const attractors: { position: Vec2 }[] = [];
+
+  let train: {
+    pos: Vec2;
+    orientaion: number;
+    acceleration: number;
+    velocity: number;
+    turnAngle: number;
+  } = {
+    pos: { x: 0, y: 0 },
+    orientaion: 0,
+    velocity: 0,
+    acceleration: 0,
+    turnAngle: 0,
+  };
+
+  const sensorOffsets = { x: 80, y: 20 };
+
+  function tick(el: HTMLElement) {
+    // Move the train around the track...
+    // requestAnimationFrame(() => tick(el));
+
+    // Sum up the "gravitational" pull of all the attractors on each of the sensor points on the train (either side of the front axle).
+    const sensor1 = {
+      x:
+        train.pos.x +
+        Math.cos(train.orientaion) * sensorOffsets.x -
+        Math.sin(train.orientaion) * sensorOffsets.y,
+      y:
+        train.pos.y +
+        Math.sin(train.orientaion) * sensorOffsets.x +
+        Math.cos(train.orientaion) * sensorOffsets.y,
+    };
+    const sensor2 = {
+      x:
+        train.pos.x +
+        Math.cos(train.orientaion) * sensorOffsets.x +
+        Math.sin(train.orientaion) * sensorOffsets.y,
+      y:
+        train.pos.y +
+        Math.sin(train.orientaion) * sensorOffsets.x -
+        Math.cos(train.orientaion) * sensorOffsets.y,
+    };
+    let sensor1Force = 0;
+    let sensor2Force = 0;
+    for (const a of attractors) {
+      const dx = a.position.x - sensor1.x;
+      const dy = a.position.y - sensor1.y;
+      const distSq = dx * dx + dy * dy;
+      sensor1Force += 1 / distSq;
+    }
+
+    // Sum up sensor 2's forces
+    for (const a of attractors) {
+      const dx = a.position.x - sensor2.x;
+      const dy = a.position.y - sensor2.y;
+      const distSq = dx * dx + dy * dy;
+      sensor2Force += 1 / distSq;
+    }
+
+    const forceDiff = sensor1Force - sensor2Force;
+    console.log("Sensor forces", forceDiff);
+
+    const drag = 0.003 * train.velocity;
+    train.velocity += train.acceleration - drag;
+    train.pos = {
+      x: train.pos.x + Math.cos(train.orientaion) * train.velocity,
+      y: train.pos.y + Math.sin(train.orientaion) * train.velocity,
+    };
+    const turn = Math.max(
+      Math.min(forceDiff + train.turnAngle * 0.01, 0.05),
+      -0.05,
+    );
+    train.orientaion += turn * train.velocity;
+    el.style.transform = `translate(${train.pos.x}px, ${train.pos.y}px) rotate(${train.orientaion}rad)`;
+    console.log(train);
+
+    // Use the difference in forces to adjust the turn angle
+    // train.turnAngle += forceDiff * 0.5;
+  }
+
   return {
     oncreate({ dom }: m.VnodeDOM) {
+      const trainEl = document.createElement("div");
+      trainEl.className = "train";
+      for (const dy of [sensorOffsets.y, -sensorOffsets.y]) {
+        const sensor = document.createElement("div");
+        sensor.className = "train-sensor";
+        sensor.style.left = `${sensorOffsets.x}px`;
+        sensor.style.top = `calc(50% + ${dy}px)`;
+        trainEl.appendChild(sensor);
+      }
+      dom.querySelector(".workspace")?.appendChild(trainEl);
+
       // Focus the main element so that it can receive keyboard events
       (dom as HTMLElement).focus();
+      requestAnimationFrame(() => tick(trainEl));
     },
     view() {
+      attractors.length = 0;
+
       const currentHash = getCurrentHash();
       let noSuchWorkspace = false;
       if (currentHash !== previousUuid) {
@@ -158,41 +310,31 @@ export function App(): m.Component {
         );
       }
 
+      // Normalize the workspace's tree of docked tracks into a flat list of
+      // pieces with world coordinates, for easier rendering and simulation.
+      // TODO - only do this when the workspace changes, which we can tell.
+      const normalizedTracks = normalizeTracks(workspace.workspace);
+
       const trackPieces: m.Children[] = [];
 
-      function renderTrack(
-        track: DockedTrack,
-        translate: Vec2,
-        rotation: number,
-        isRoot: boolean,
-      ) {
-        const { kind, docked, flipped } = track;
-        const { view, ports } = trackRegistry[kind];
+      for (const track of normalizedTracks) {
+        const manifest = trackRegistry[track.kind];
 
+        let translate = track.position;
         if (draggedTrack && track.id === draggedTrack.id) {
           translate = draggedTrack.position;
         }
-
-        const pieceTransform =
-          `translate(${translate.x}px, ${translate.y}px) rotate(${rotation}deg)` +
-          (flipped ? ` scaleY(-1)` : ``);
 
         trackPieces.push(
           m(
             TrackPiece,
             {
-              style: {
-                position: "absolute",
-                top: 0,
-                left: 0,
-                transformOrigin: `top left`,
-                transform: pieceTransform,
-                width: 0,
-                height: 0,
-                color: isRoot ? "crimson" : "black",
-              },
-              selected: selectedId === track.id,
-              ports,
+              translate: translate,
+              rotation: track.orientation,
+              flipped: track.flipped,
+              selected: track.id === selectedId,
+              ports: manifest.ports,
+              isRoot: track.isRoot,
               onpointerdown: (e: PointerEvent) => {
                 e.stopPropagation(); // Prevent the main view's pointerdown from firing
                 const node = e.currentTarget as HTMLElement;
@@ -287,44 +429,11 @@ export function App(): m.Component {
                   },
                 });
               },
-            } satisfies TrackPieceAttrs,
-            view(),
+            },
+            manifest.view(),
           ),
         );
-
-        docked?.forEach((d, i) => {
-          if (!d) return;
-          // Work out the transform of each docked piece
-          const outputPorts = trackRegistry[kind].ports.filter(
-            (p) => p.direction === "out",
-          );
-          const port = outputPorts[i];
-
-          // Mirror the port into the piece's local frame if flipped, then
-          // rotate into the parent's world frame and add the parent's
-          // translate. Children do not inherit the flip — only the port
-          // geometry is mirrored so they attach on the correct side.
-          const flipSign = flipped ? -1 : 1;
-          const localX = port.offset.x;
-          const localY = port.offset.y * flipSign;
-          const rad = (rotation * Math.PI) / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          const dockTranslate = {
-            x: translate.x + localX * cos - localY * sin,
-            y: translate.y + localX * sin + localY * cos,
-          };
-
-          const dockRotation =
-            (rotation + port.rotation * flipSign + 360) % 360;
-
-          renderTrack(d, dockTranslate, dockRotation, false);
-        });
       }
-
-      workspace.workspace.tracks.forEach((x) =>
-        renderTrack(x, x.position, x.orientation ?? 0, true),
-      );
 
       return m(
         "main",
@@ -419,6 +528,25 @@ export function App(): m.Component {
                 workspace.undo();
               }
               secureProject();
+            } else if (e.code === "ArrowUp") {
+              train.acceleration = 0.01;
+            } else if (e.code === "ArrowDown") {
+              train.acceleration = -0.01;
+            } else if (e.code === "ArrowLeft") {
+              if (!e.repeat) train.turnAngle -= 1;
+            } else if (e.code === "ArrowRight") {
+              if (!e.repeat) train.turnAngle += 1;
+            }
+          },
+          onkeyup: (e: KeyboardEvent) => {
+            if (e.code === "ArrowUp") {
+              train.acceleration = 0;
+            } else if (e.code === "ArrowDown") {
+              train.acceleration = 0;
+            } else if (e.code === "ArrowLeft") {
+              if (!e.repeat) train.turnAngle += 1;
+            } else if (e.code === "ArrowRight") {
+              if (!e.repeat) train.turnAngle -= 1;
             }
           },
         },
@@ -519,18 +647,17 @@ export function App(): m.Component {
 
             // Record this sample at the head of the trail; drop stale ones.
             const now = performance.now();
-            trail.unshift({ ts: now, position: tw.position, rotation: tw.rotation });
+            trail.unshift({
+              ts: now,
+              position: tw.position,
+              rotation: tw.rotation,
+            });
             const cutoff = now - TRAIL_MAX_AGE_MS;
             while (trail.length > 0 && trail[trail.length - 1].ts < cutoff) {
               trail.pop();
             }
 
-            const blob = (
-              pos: Vec2,
-              color: string,
-              size: number,
-              z: number,
-            ) =>
+            const blob = (pos: Vec2, color: string, size: number, z: number) =>
               m(".train", {
                 style: {
                   position: "absolute",

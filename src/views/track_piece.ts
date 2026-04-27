@@ -1,21 +1,50 @@
 import m from "mithril";
 import type { Port } from "../types";
+import type { Vec2 } from "../geom";
+import classNames from "classnames";
 
 export interface TrackPieceAttrs extends m.Attributes {
   readonly ports: readonly Port[];
-  readonly docked?: m.Children[];
-  readonly selected?: boolean;
+  readonly selected: boolean;
+  readonly translate: Vec2;
+  readonly rotation: number;
+  readonly flipped: boolean;
+  readonly isRoot: boolean;
 }
 
 export function TrackPiece(): m.Component<TrackPieceAttrs> {
   return {
     view({ attrs, children }: m.Vnode<TrackPieceAttrs>) {
-      const { ports, inputOffset, docked, selected, ...htmlAttrs } = attrs;
+      const {
+        ports,
+        inputOffset,
+        docked,
+        selected,
+        translate,
+        rotation,
+        flipped,
+        className,
+        isRoot,
+        ...htmlAttrs
+      } = attrs;
+
+      const pieceTransform =
+        `translate(${translate.x}px, ${translate.y}px) ` +
+        `rotate(${rotation}deg) ` +
+        (flipped ? ` scaleY(-1)` : ``);
+
       return m(
         ".track",
         {
           ...htmlAttrs,
-          className: selected ? "selected" : "",
+          style: {
+            transform: pieceTransform,
+          },
+          className: classNames(
+            className,
+            selected && "selected",
+            isRoot && "root",
+          ),
         },
         children,
         ports.map((port, i) =>
@@ -42,7 +71,6 @@ export function TrackPiece(): m.Component<TrackPieceAttrs> {
                 transform: `translate(-50%, -50%)`,
               },
             }),
-            docked?.[i],
           ),
         ),
       );

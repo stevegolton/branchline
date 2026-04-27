@@ -3,7 +3,17 @@
 }
 
 .track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  width: 0;
+  height: 0;
   cursor: move;
+}
+
+.track.root {
+  color: crimson;
 }
 
 .track.selected svg {
@@ -170,4 +180,35 @@ main:focus {
   background: #fff;
   color: #000;
   border: 1px solid #000;
+}
+
+.train {
+  position: absolute;
+  transform-origin: 0 50%;
+}
+
+.train::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 80px;
+  height: 40px;
+  margin-top: -20px;
+  background: rgb(255, 0, 0);
+}
+
+.train-sensor {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: yellow;
+  border: 1px solid black;
+  pointer-events: none;
+}
+
+.track-dots {
+  display: none;
 }
