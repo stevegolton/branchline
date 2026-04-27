@@ -22,7 +22,7 @@ export interface DragStartHandlers {
 
 export interface DragHandlers {
   onDrag?: (deltaX: number, deltaY: number) => void;
-  onDragStop?: (deltaX: number, deltaY: number) => void;
+  onDragEnd?: (deltaX: number, deltaY: number) => void;
 }
 
 export function startDrag(
@@ -58,7 +58,7 @@ export function startDrag(
     }
     const deltaX = ev.clientX - startX;
     const deltaY = ev.clientY - startY;
-    handlers.onDragStop?.(deltaX, deltaY);
+    handlers.onDragEnd?.(deltaX, deltaY);
   }
 
   element.addEventListener("pointermove", onPointerMove);

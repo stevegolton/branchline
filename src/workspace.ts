@@ -1,5 +1,5 @@
 import { produce, type WritableDraft } from "immer";
-import type { Vec2 } from "./geom";
+import { Tx2, Vec2 } from "./geom";
 import { trackRegistry } from "./track_registry";
 
 export type DockedTrack = Omit<Track, "position" | "orientation">;
@@ -7,8 +7,8 @@ export type DockedTrack = Omit<Track, "position" | "orientation">;
 export interface Track {
   id: string;
   kind: keyof typeof trackRegistry;
-  position: Vec2;
-  orientation?: number;
+  p: Vec2;
+  r: number;
   flipped?: boolean;
   // Port-indexed: slots may be undefined where no child is docked. Do not
   // filter/compact — that would break index→port alignment.
@@ -31,7 +31,7 @@ export function createWorkspace(workspace: Workspace) {
   }
 
   return {
-    get workspace() {
+    get state() {
       return state;
     },
     get canUndo() {
@@ -63,21 +63,18 @@ export function createWorkspace(workspace: Workspace) {
           );
 
           const orientation =
-            ((found.orientation ?? 0) + (direction === "cw" ? 45 : -45) + 360) %
-            360;
+            ((found.r ?? 0) + (direction === "cw" ? 45 : -45) + 360) % 360;
 
           // Move to root level, preserving world orientation.
           draft.tracks.push({
             ...found.track,
-            position: found.position,
-            orientation,
+            p: found.p,
+            r: orientation,
           });
         } else {
           // Root tracks can just be rotated in place.
-          found.track.orientation =
-            ((found.track.orientation ?? 0) +
-              (direction === "cw" ? 45 : -45) +
-              360) %
+          found.track.r =
+            ((found.track.r ?? 0) + (direction === "cw" ? 45 : -45) + 360) %
             360;
           return;
         }
@@ -123,12 +120,12 @@ export function createWorkspace(workspace: Workspace) {
           // Move to root level, preserving world orientation.
           draft.tracks.push({
             ...found.track,
-            position: newPosition,
-            orientation: found.orientation,
+            p: newPosition,
+            r: found.r,
           });
         } else {
           // Just move
-          found.track.position = newPosition;
+          found.track.p = newPosition;
         }
       });
     },
@@ -151,11 +148,7 @@ export function createWorkspace(workspace: Workspace) {
         }
 
         // Strip root-only fields when docking.
-        const {
-          position: _p,
-          orientation: _o,
-          ...docked
-        } = found.track as Track;
+        const { p: _p, r: _o, ...docked } = found.track as Track;
 
         target.track.docked ??= [];
         target.track.docked[portIndex] = docked as DockedTrack;
@@ -171,20 +164,20 @@ export function createWorkspace(workspace: Workspace) {
     duplicateTrack(trackId: string, spawnPos: Vec2) {
       const id = crypto.randomUUID();
       updateStore((draft) => {
-        const track = findTrack(this.workspace, trackId);
+        const track = findTrack(this.state, trackId);
         if (track.kind === "none") return;
         if (track.kind === "docked") {
           const t = track.track;
           draft.tracks.push({
             ...t,
             id,
-            position: spawnPos,
-            orientation: track.orientation,
+            p: spawnPos,
+            r: track.r,
             docked: [], // Undock children when duplicating, to avoid ID conflicts.
           });
         } else {
           const t = track.track;
-          draft.tracks.push({ ...t, id, position: spawnPos, docked: [] });
+          draft.tracks.push({ ...t, id, p: spawnPos, docked: [] });
         }
       });
       return id;
@@ -198,19 +191,17 @@ type FindResult =
       kind: "root";
       track: Track;
     }
-  | {
+  | ({
       kind: "docked";
       track: DockedTrack;
       parent: DockedTrack;
-      position: Vec2;
-      orientation: number;
-    };
+    } & Tx2);
 
 function findTrack(workspace: Workspace, id: string): FindResult {
   for (const track of workspace.tracks) {
     if (!track) continue;
-    const rootPos = track.position;
-    const rootRot = track.orientation ?? 0;
+    const rootPos = track.p;
+    const rootRot = track.r ?? 0;
     if (track.id === id) {
       return {
         kind: "root",
@@ -243,20 +234,20 @@ function findDockedTrack(
     const n = nodes[i];
     if (!n) continue;
     const port = outPorts[i];
-    const localX = port.offset.x;
-    const localY = port.offset.y * flipSign;
+    const localX = port.p.x;
+    const localY = port.p.y * flipSign;
     const childPos = {
       x: parentPos.x + localX * cos - localY * sin,
       y: parentPos.y + localX * sin + localY * cos,
     };
-    const childRot = (parentRot + port.rotation * flipSign + 360) % 360;
+    const childRot = (parentRot + port.r * flipSign + 360) % 360;
     if (n.id === id) {
       return {
         kind: "docked",
         track: n,
         parent,
-        position: childPos,
-        orientation: childRot,
+        p: childPos,
+        r: childRot,
       };
     }
     if (n.docked) {

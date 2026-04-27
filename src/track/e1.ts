@@ -11,6 +11,7 @@ import {
   STALK_W,
   STROKE_WIDTH,
 } from "./common";
+import type { Tx2 } from "../geom";
 
 const R_INNER = CURVE_R - BODY_H / 2;
 const R_OUTER = CURVE_R + BODY_H / 2;
@@ -166,31 +167,34 @@ const piece: TrackPiece = {
         "stroke-linejoin": "round",
       }),
     ),
-  ports: [
-    {
-      rotation: 0,
-      direction: "in",
-      offset: {
-        x: 0,
-        y: 0,
+  ports: new Map([
+    [
+      "out",
+      {
+        p: { x: maleOpening.x, y: maleOpening.y },
+        r: 360 - 45,
+        direction: "out",
       },
-    },
-    {
-      offset: { x: maleOpening.x, y: maleOpening.y },
-      rotation: 360 - 45,
-      direction: "out",
-    },
-  ],
-  path: (t) => {
-    const theta = CURVE_ANGLE * t;
-    return {
-      position: {
-        x: CURVE_R * Math.sin(theta),
-        y: CURVE_R * (Math.cos(theta) - 1),
+    ],
+  ]),
+  paths: new Map([
+    [
+      "out",
+      {
+        length: CURVE_ANGLE * CURVE_R,
+        path: (t: number): Tx2 => {
+          const theta = t / CURVE_R;
+          return {
+            p: {
+              x: CURVE_R * Math.sin(theta),
+              y: CURVE_R * (Math.cos(theta) - 1),
+            },
+            r: (-(theta * 180) / Math.PI + 360) % 360,
+          };
+        },
       },
-      rotation: (-(theta * 180) / Math.PI + 360) % 360,
-    };
-  },
+    ],
+  ]),
 };
 
 export default piece;

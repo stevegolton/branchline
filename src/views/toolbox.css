@@ -1,0 +1,16 @@
+.toolbox {
+  display: flex;
+  flex-direction: column;
+  border: solid 2px black;
+  margin-block: 10px;
+}
+
+.toolbox-item {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+}

@@ -6,8 +6,8 @@ export function createFigureOfEight(): Workspace {
       {
         id: crypto.randomUUID(),
         kind: "c1",
-        position: { x: 800, y: 600 },
-        orientation: 0,
+        p: { x: 800, y: 600 },
+        r: 0,
         docked: [
           {
             id: crypto.randomUUID(),

@@ -1,21 +1,17 @@
 import m from "mithril";
-import { trackRegistry } from "../track_registry";
 
 export interface ToolbarAttrs {
-  canUndo: boolean;
-  canRedo: boolean;
-  isPlaying: boolean;
-  onNewWorkspace: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  onPlayPause: () => void;
-  onAddTrack: (kind: keyof typeof trackRegistry) => void;
+  readonly canUndo?: boolean;
+  readonly canRedo?: boolean;
+  readonly onNewWorkspace?: () => void;
+  readonly onUndo?: () => void;
+  readonly onRedo?: () => void;
 }
 
 export const Toolbar: m.Component<ToolbarAttrs> = {
   view({ attrs, children }) {
     return m(
-      ".help",
+      ".toolbar",
       {
         onpointerdown: (e: PointerEvent) => {
           e.stopPropagation();
@@ -49,20 +45,6 @@ export const Toolbar: m.Component<ToolbarAttrs> = {
           m("span", { style: { color: "crimson" } }, "red"),
           " = root",
         ]),
-        m(
-          ".add-tracks",
-          (Object.keys(trackRegistry) as (keyof typeof trackRegistry)[]).map(
-            (kind) =>
-              m(
-                "button.add-track-btn",
-                {
-                  onclick: () => attrs.onAddTrack(kind),
-                  title: `Add ${kind}`,
-                },
-                kind,
-              ),
-          ),
-        ),
         m("button", { onclick: attrs.onNewWorkspace }, "New Workspace"),
         m(
           "button",
@@ -73,11 +55,6 @@ export const Toolbar: m.Component<ToolbarAttrs> = {
           "button",
           { disabled: !attrs.canRedo, onclick: attrs.onRedo },
           "Redo",
-        ),
-        m(
-          "button",
-          { onclick: attrs.onPlayPause },
-          attrs.isPlaying ? "Stop" : "Play",
         ),
         children,
       ],

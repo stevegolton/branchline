@@ -1,13 +1,35 @@
+.workspace-shim {
+  /* filter: drop-shadow(6px 6px 0 rgba(0, 0, 0)); */
+  position: "absolute";
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
 .workspace {
-  filter: drop-shadow(8px 8px 0 rgba(0, 0, 0));
+  height: 100%;
 }
 
 .track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  width: 0;
+  height: 0;
   cursor: move;
 }
 
-.track.selected svg {
+.track.root {
+  color: crimson;
+  z-index: 1;
+}
+
+.track.selected {
   color: rgb(43, 97, 215);
+  z-index: 2;
 }
 
 /* Snap-target ghost: render the piece as a soft grey silhouette so it
@@ -19,10 +41,6 @@
   fill: rgba(0, 0, 0);
 }
 .ghost .port {
-  display: none;
-}
-
-.port {
   display: none;
 }
 
@@ -52,7 +70,7 @@ main:focus {
   outline: solid rgb(43, 97, 215) 2px;
 }
 
-.help {
+.toolbar {
   position: absolute;
   top: 12px;
   left: 12px;
@@ -67,7 +85,7 @@ main:focus {
   min-width: 220px;
 }
 
-.help button {
+.toolbar button {
   display: inline-block;
   margin-top: 6px;
   margin-right: 4px;
@@ -82,12 +100,12 @@ main:focus {
   box-shadow: 2px 2px 0 #000;
 }
 
-.help button:hover:not(:disabled) {
+.toolbar button:hover:not(:disabled) {
   background: #000;
   color: #fff;
 }
 
-.help button:disabled {
+.toolbar button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
@@ -154,14 +172,14 @@ main:focus {
   margin-top: 6px;
 }
 
-.help .add-track-btn {
+.toolbar .add-track-btn {
   margin: 0;
   min-width: 36px;
   text-transform: uppercase;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.help kbd {
+.toolbar kbd {
   display: inline-block;
   padding: 0 5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -170,4 +188,51 @@ main:focus {
   background: #fff;
   color: #000;
   border: 1px solid #000;
+}
+
+.train {
+  position: absolute;
+  transform-origin: 0 50%;
+  width: 0;
+  height: 0;
+  top: 0;
+  left: 0;
+  cursor: move;
+}
+
+.train::before {
+  content: "";
+  position: absolute;
+  width: 128px;
+  height: 64px;
+  border: solid 2px green;
+  background: white;
+  transform: translate(-50%, -50%);
+  border-radius: 0 10px 10px 0;
+}
+
+.train.selected::before {
+  border-color: rgb(43, 97, 215);
+}
+
+.track-dots {
+  display: none;
+}
+
+.near-track-highlight {
+  filter: drop-shadow(0 0 4px rgba(255, 0, 0, 0.8));
+}
+
+.ghost {
+  filter: brightness(0);
+}
+
+.tracks {
+  filter: drop-shadow(6px 6px 0 rgba(0, 0, 0));
+  /* position: absolute; */
+}
+
+.trains {
+  filter: drop-shadow(6px 6px 0 rgba(0, 0, 0));
+  /* position: absolute; */
 }
