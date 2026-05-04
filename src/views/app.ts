@@ -1,9 +1,8 @@
 import { produce } from "immer";
 import m from "mithril";
-import { startDrag } from "../dom";
+import { startDrag, type MithrilEvent } from "../dom";
 import { Tx2, Vec2 } from "../geom";
 import {
-  empty,
   findTrackById,
   type World,
   type Track,
@@ -21,8 +20,9 @@ import {
   flipSelected,
   removeSelected,
   deselect,
+  emptyWorld,
+  duplicateSelected,
 } from "../world";
-import { createProjectStore } from "../project_store";
 import { trackRegistry } from "../track_registry";
 import type { Path, Port } from "../types";
 import { ProjectRow } from "./project_row";
@@ -30,18 +30,13 @@ import { Toolbar } from "./toolbar";
 import { TrackView } from "./track";
 import { TrainView } from "./train";
 import { Workspace } from "./workspace";
-import { createWorkspace } from "../workspace";
 import { assertDefined } from "../assert";
 import { Toolbox, ToolboxItem } from "./toolbox";
 import "./app.css";
 import { uuid } from "../utils";
+import { createProjectStore } from "../project_store";
 
-function getCurrentHash(): string | null {
-  const match = location.hash.match(/^#\/project\/([0-9a-fA-F-]+)$/);
-  return match ? match[1]! : null;
-}
-
-let world = empty();
+let cachedWorld: World | undefined;
 
 type FlatPort = Port & { readonly occupied: boolean };
 
@@ -56,9 +51,9 @@ interface FlatTrackNode {
 }
 
 // Flattens the game state into a list of absolute track positions where each track node and each path is
-function flatten(state: World) {
+function flatten(world: World) {
   const flatTrackNodes: FlatTrackNode[] = [];
-  for (const rootNode of state.tracks) {
+  for (const rootNode of world.tracks) {
     const addFlatNode = (node: Track, tx: Tx2, isRoot: boolean) => {
       // A flipped track mirrors its local Y axis. Tx2 has no scale component,
       // so we bake the mirror into each port's local coordinates before
@@ -120,69 +115,175 @@ function flatten(state: World) {
 
 let mousePos: Vec2 = { x: 0, y: 0 };
 
-export function App(): m.Component {
-  let previousUuid: string | null = null;
-  let workspace = createWorkspace({ tracks: [] });
-  const store = createProjectStore();
+export interface AppAttrs {
+  readonly worldId?: string;
+}
+
+const store = createProjectStore();
+
+export function App(): m.Component<AppAttrs> {
+  let previousWorldId: string | undefined | null;
   let ghostTrain: Tx2 | undefined;
   let ghostTrackNode: FlatTrackNode | undefined;
 
-  function saveProject() {
-    const currentId = getCurrentHash();
-    if (currentId) {
-      store.saveProject(currentId, workspace.state);
+  function getOrCreateWorld(worldId: string | null): World | undefined {
+    if (worldId !== previousWorldId) {
+      previousWorldId = worldId;
+      if (worldId) {
+        return store.getProject(worldId)?.workspace;
+      } else {
+        // Undefined world id - just return an empty world. We'll save it on
+        // first load.
+        return emptyWorld;
+      }
     } else {
-      const newId = uuid();
-      store.saveProject(newId, workspace.state);
-      location.hash = `#/project/${newId}`;
+      return cachedWorld;
     }
   }
 
-  function maybeLoadWorkspace(currentHash: string | null): boolean {
-    if (currentHash !== previousUuid) {
-      if (currentHash) {
-        previousUuid = currentHash;
-        const project = store.getProject(currentHash);
-        if (project) {
-          workspace = createWorkspace(project.workspace);
-        } else {
-          return false;
-        }
+  function useWorld(worldId: string | null) {
+    cachedWorld = getOrCreateWorld(worldId);
+    function updateWorld(newWorld: World, save = true) {
+      cachedWorld = newWorld;
+      if (!save) return;
+      if (worldId) {
+        store.saveProject(worldId ?? uuid(), newWorld);
       } else {
-        workspace = createWorkspace({ tracks: [] });
-        previousUuid = null;
+        // No world ID - must be a new world that hasn't been saved yet.
+        const newId = uuid();
+        store.saveProject(newId, newWorld);
+        m.route.set(`/world/${newId}`);
       }
     }
-    return true;
+    return { world: cachedWorld, updateWorld };
   }
 
   return {
-    oncreate({ dom }: m.VnodeDOM) {
+    oncreate({ dom }: m.VnodeDOM<AppAttrs>) {
       // Focus the main element so that it can receive keyboard events
       (dom as HTMLElement).focus();
-      requestAnimationFrame(tick);
     },
-    view() {
-      const currentHash = getCurrentHash();
-      const hasWorkspace = maybeLoadWorkspace(currentHash);
+    view({ attrs }: m.Vnode<AppAttrs>) {
+      const worldId = attrs.worldId;
+      const { world: maybeWorld, updateWorld } = useWorld(worldId ?? null);
 
-      // If the URL references a workspace that doesn't exist, show an error
-      // instead of the editor UI.
-      if (!hasWorkspace) {
+      if (!maybeWorld) {
         return m(
           "",
-          'No such workspace: "' + currentHash + '"',
+          'No such workspace: "' + worldId + '"',
           m(
             "button",
             {
-              onclick: () => {
-                location.hash = "";
-                workspace = createWorkspace({ tracks: [] });
-              },
+              onclick: () => m.route.set("/new"),
             },
-            "Back to safety",
+            "Create new world",
           ),
         );
+      }
+
+      const world = maybeWorld;
+
+      function tick() {
+        if (!cachedWorld) {
+          return;
+        }
+        m.redraw();
+        const flatNodes = flatten(cachedWorld);
+        cachedWorld = produce(cachedWorld, (draft) => {
+          draft.trains = draft.trains.map((train) => {
+            return runTrainTick(flatNodes, train);
+          });
+        });
+      }
+
+      tick();
+
+      function addNodeAtMouse(kind: keyof typeof trackRegistry) {
+        updateWorld(addRootTrack(world, kind, mousePos));
+      }
+
+      function findDockTarget(
+        nodes: readonly FlatTrackNode[],
+        targetTx: Tx2,
+        avoidNodeId: string,
+      ) {
+        const DOCKING_DIST = 40;
+        const nearbyPorts = nodes
+          .filter((node) => node.id !== avoidNodeId)
+          .map((node) => {
+            return Array.from(node.ports.entries())
+              .filter(([_, port]) => !port.occupied) // Only consider unoccupied ports
+              .map(([portName, port]) => {
+                const dist = Tx2.dist(port, targetTx);
+                return { node, portName, dist };
+              });
+          })
+          .flat()
+          .filter(({ dist }) => dist < DOCKING_DIST)
+          .sort((a, b) => a.dist - b.dist);
+        return nearbyPorts[0];
+      }
+
+      const keyMap: Map<string, () => void> = new Map([
+        ["f", () => updateWorld(flipSelected(world))],
+        ["q", () => updateWorld(rotateSelected(world, "ccw"))],
+        ["e", () => updateWorld(rotateSelected(world, "cw"))],
+        ["Delete", () => updateWorld(removeSelected(world))],
+        ["Backspace", () => updateWorld(removeSelected(world))],
+        ["n", () => addNodeAtMouse("a1")],
+        ["c", () => addNodeAtMouse("e1")],
+        ["y", () => addNodeAtMouse("y1")],
+        ["u", () => addNodeAtMouse("y2")],
+        ["d", () => updateWorld(duplicateSelected(world, mousePos))],
+        ["t", () => updateWorld(addTrain(world, mousePos))],
+      ]);
+
+      function findNearestTrackPath(
+        flatTracks: readonly FlatTrackNode[],
+        targetTx: Tx2,
+      ) {
+        const TRACK_CONSIDERATION_DIST = 200;
+        const TRACK_DIST_LIMIT = 50;
+        const candidateTracks = flatTracks
+          .map((node) => {
+            return { node, dist: Vec2.dist(node.tx.p, targetTx.p) };
+          })
+          .filter(({ dist }) => dist < TRACK_CONSIDERATION_DIST)
+          .sort((a, b) => a.dist - b.dist);
+
+        const pathPoints = candidateTracks
+          .map(({ node }) => {
+            return Array.from(node.paths.entries())
+              .map(([pathName, path]) => ({ pathName, path }))
+              .map(({ pathName, path }) => {
+                const points: {
+                  node: FlatTrackNode;
+                  pathName: string;
+                  t: number;
+                  tx: Tx2;
+                }[] = [];
+                const PATH_POINT_SPACING = 1;
+                for (let t = 0; t <= path.length; t += PATH_POINT_SPACING) {
+                  points.push({ node, pathName, t, tx: path.path(t) });
+                }
+                return points;
+              })
+              .flat();
+          })
+          .flat()
+          .map(({ tx, ...rest }) => {
+            const reverse = Tx2.angleBetween(tx.r, targetTx.r) > 90;
+            return {
+              ...rest,
+              tx: reverse ? Tx2.rotate(tx, 180) : tx,
+              dist: Vec2.dist(tx.p, targetTx.p),
+              reverse: Tx2.angleBetween(tx.r, targetTx.r) > 90,
+            };
+          })
+          .filter(({ dist }) => dist < TRACK_DIST_LIMIT)
+          .sort((a, b) => a.dist - b.dist);
+
+        return pathPoints[0];
       }
 
       const flatNodes = flatten(world);
@@ -196,20 +297,20 @@ export function App(): m.Component {
             selected: node.id === world.selectedId,
             isRoot: node.isRoot,
             onpointerdown(e: PointerEvent) {
-              world = selectEntity(world, node.id);
+              updateWorld(selectEntity(world, node.id));
               e.stopPropagation();
               let dragPos = node.tx;
               startDrag(e, e.currentTarget as HTMLElement, 4, {
                 onDragStart: () => {
                   // Undock this node - noop if it's a root node
-                  world = undockTrack(world, node.id, node.tx);
+                  updateWorld(undockTrack(world, node.id, node.tx));
                   return {
                     onDrag(deltaX, deltaY) {
                       dragPos = Tx2.translate(dragPos, {
                         x: deltaX,
                         y: deltaY,
                       });
-                      world = moveRootTrack(world, node.id, dragPos.p);
+                      updateWorld(moveRootTrack(world, node.id, dragPos.p));
                       const trackPort = findDockTarget(
                         flatNodes,
                         dragPos,
@@ -231,11 +332,13 @@ export function App(): m.Component {
                         node.id,
                       );
                       if (trackPort) {
-                        world = dockTrack(
-                          world,
-                          node.id,
-                          trackPort.node.id,
-                          trackPort.portName,
+                        updateWorld(
+                          dockTrack(
+                            world,
+                            node.id,
+                            trackPort.node.id,
+                            trackPort.portName,
+                          ),
                         );
                       }
                       ghostTrackNode = undefined;
@@ -270,29 +373,31 @@ export function App(): m.Component {
           tx: trainTx,
           selected: train.id === world.selectedId,
           onpointerdown(e: PointerEvent) {
-            world = selectEntity(world, train.id);
+            updateWorld(selectEntity(world, train.id));
             e.stopPropagation();
             let dragPos = trainTx;
             startDrag(e, e.currentTarget as HTMLElement, 4, {
               onDragStart: () => {
-                world = derailTrain(world, train.id, dragPos);
+                updateWorld(derailTrain(world, train.id, dragPos));
                 return {
                   onDrag(dx, dy) {
                     dragPos = Tx2.translate(dragPos, { x: dx, y: dy });
-                    world = moveTrain(world, train.id, dragPos.p);
+                    updateWorld(moveTrain(world, train.id, dragPos.p));
                     const trackPath = findNearestTrackPath(flatNodes, dragPos);
                     ghostTrain = trackPath?.tx;
                   },
                   onDragEnd() {
                     const trackPath = findNearestTrackPath(flatNodes, dragPos);
                     if (trackPath) {
-                      world = dockTrainToTrack(
-                        world,
-                        train.id,
-                        trackPath.node.id,
-                        trackPath.t,
-                        trackPath.pathName,
-                        trackPath.reverse,
+                      updateWorld(
+                        dockTrainToTrack(
+                          world,
+                          train.id,
+                          trackPath.node.id,
+                          trackPath.t,
+                          trackPath.pathName,
+                          trackPath.reverse,
+                        ),
                       );
                     }
                     ghostTrain = undefined;
@@ -309,28 +414,33 @@ export function App(): m.Component {
         {
           tabIndex: -1,
           onkeydown(e: KeyboardEvent) {
-            keyMap.get(e.key)?.();
+            if (e.getModifierState("Control") || e.getModifierState("Meta")) {
+              if (e.key === "z") {
+                // TODO: Undo stack.
+                // updateWorld(history.pop() ?? world);
+              }
+            } else {
+              keyMap.get(e.key)?.();
+            }
           },
-          onpointermove(e: PointerEvent) {
+          onpointermove(e: MithrilEvent<PointerEvent>) {
+            e.redraw = false;
             mousePos = { x: e.clientX, y: e.clientY };
           },
         },
         m(
           Toolbar,
           {
-            canUndo: workspace.canUndo,
-            canRedo: workspace.canRedo,
+            canUndo: false,
+            canRedo: false,
             onNewWorld: () => {
-              location.hash = "";
-              workspace = createWorkspace({ tracks: [] });
+              m.route.set("/new");
             },
             onUndo: () => {
-              workspace.undo();
-              saveProject();
+              throw new Error("Undo not implemented yet");
             },
             onRedo: () => {
-              workspace.redo();
-              saveProject();
+              throw new Error("Undo not implemented yet");
             },
           },
           store.listProjects().map(([key, project]) =>
@@ -339,15 +449,17 @@ export function App(): m.Component {
               id: key,
               created: project.created,
               modified: project.modified,
-              active: getCurrentHash() === key,
+              active: worldId === key,
               onLoad: () => {
-                location.hash = `#/project/${key}`;
+                m.route.set(`/world/${key}`);
               },
               onDelete: () => {
-                store.deleteProject(key);
-                if (getCurrentHash() === key) {
-                  location.hash = "";
-                  workspace = createWorkspace({ tracks: [] });
+                const result = confirm(
+                  "Are you sure you want to delete this world? This action cannot be undone.",
+                );
+                if (result) {
+                  m.route.set("/new");
+                  store.deleteProject(key);
                 }
               },
             }),
@@ -389,13 +501,14 @@ export function App(): m.Component {
           {
             offset: world.offset,
             onpan(offset) {
-              console.log("Panning workspace to", offset);
-              world = produce(world, (draft) => {
-                draft.offset = offset;
-              });
+              updateWorld(
+                produce(world, (draft) => {
+                  draft.offset = offset;
+                }),
+              );
             },
             onclick() {
-              world = deselect(world);
+              updateWorld(deselect(world));
             },
           },
           ghostTrackNode &&
@@ -421,112 +534,15 @@ export function App(): m.Component {
   };
 }
 
-// Duplicate the currently selected track node, attaching the new node to the
-// first port of the selected one.
-function duplicateSelected() {
-  const selectedId = world.selectedId;
-  if (!selectedId) return;
-  world = produce(world, (draft) => {
-    const foundNode = findTrackById(draft, selectedId);
-    if (!foundNode) return;
-
-    // Find the first empty port on the selected node
-    const manifest = trackRegistry[foundNode.node.kind];
-    let emptyPortName: string | undefined;
-    for (const [portName] of manifest.ports) {
-      if (!foundNode.node.dockedNodes[portName]) {
-        // This port is empty - we'll dock the new node here
-        emptyPortName = portName;
-      }
-    }
-
-    const node = foundNode.node;
-    const newId = uuid();
-    const newNode: Track = {
-      id: newId,
-      kind: node.kind,
-      flipped: node.flipped,
-      dockedNodes: {},
-    };
-
-    if (!emptyPortName) {
-      console.warn(
-        "Unable to duplicate node, putting the new node under the mouse instead",
-      );
-      draft.tracks.push({
-        ...newNode,
-        tx: { p: mousePos, r: 0 },
-      });
-    } else {
-      foundNode.node.dockedNodes[emptyPortName] = newNode;
-    }
-
-    draft.selectedId = newId;
-  });
-}
-
-function addNodeAtMouse(kind: keyof typeof trackRegistry) {
-  world = addRootTrack(world, kind, mousePos);
-}
-
-function findDockTarget(
-  nodes: readonly FlatTrackNode[],
-  targetTx: Tx2,
-  avoidNodeId: string,
+function findRailedPosition(
+  flatNodes: readonly FlatTrackNode[],
+  trackNodeId: string,
+  pathName: string,
+  t: number,
 ) {
-  const DOCKING_DIST = 40;
-  const nearbyPorts = nodes
-    .filter((node) => node.id !== avoidNodeId)
-    .map((node) => {
-      return Array.from(node.ports.entries())
-        .filter(([_, port]) => !port.occupied) // Only consider unoccupied ports
-        .map(([portName, port]) => {
-          const dist = Tx2.dist(port, targetTx);
-          return { node, portName, dist };
-        });
-    })
-    .flat()
-    .filter(({ dist }) => dist < DOCKING_DIST)
-    .sort((a, b) => a.dist - b.dist);
-  return nearbyPorts[0];
-}
-
-function tick() {
-  m.redraw();
-  const flatNodes = flatten(world);
-  world = produce(world, (draft) => {
-    draft.trains = draft.trains.map((train) => {
-      return runTrainTick(flatNodes, train);
-    });
-  });
-  requestAnimationFrame(tick);
-}
-
-function findNearestPathEndpoint(
-  tx: Tx2,
-  nodes: readonly FlatTrackNode[],
-  avoidNodeId: string,
-) {
-  const EPSILON = 0.1;
-  for (const node of nodes) {
-    if (node.id === avoidNodeId) continue;
-    for (const [pathName, { length, path }] of node.paths) {
-      const startTx = path(0);
-      if (
-        Vec2.dist(startTx.p, tx.p) < EPSILON &&
-        Tx2.angleBetween(startTx.r, tx.r) < 10
-      ) {
-        return { node, pathName, t: 0 };
-      }
-      const endTx = path(length);
-      if (
-        Vec2.dist(endTx.p, tx.p) < EPSILON &&
-        Tx2.angleBetween(endTx.r, tx.r) < 10
-      ) {
-        return { node, pathName, t: length };
-      }
-    }
-  }
+  const trackNode = flatNodes.find((node) => node.id === trackNodeId)!;
+  const path = trackNode.paths.get(pathName)!;
+  return path.path(t);
 }
 
 function runTrainTick(nodes: readonly FlatTrackNode[], train: Train): Train {
@@ -552,12 +568,6 @@ function runTrainTick(nodes: readonly FlatTrackNode[], train: Train): Train {
         train.trackNodeId,
       );
       if (nearestPathEndpoint) {
-        console.log(
-          "Moving the train to a new track",
-          nearestPathEndpoint.node.id,
-          "path",
-          nearestPathEndpoint.pathName,
-        );
         return {
           ...train,
           trackNodeId: nearestPathEndpoint.node.id,
@@ -601,77 +611,29 @@ function runTrainTick(nodes: readonly FlatTrackNode[], train: Train): Train {
   }
 }
 
-const keyMap: Map<string, () => void> = new Map([
-  ["f", () => (world = flipSelected(world))],
-  ["q", () => (world = rotateSelected(world, "ccw"))],
-  ["e", () => (world = rotateSelected(world, "cw"))],
-  ["Delete", () => (world = removeSelected(world))],
-  ["Backspace", () => (world = removeSelected(world))],
-  ["n", () => addNodeAtMouse("a1")],
-  ["c", () => addNodeAtMouse("e1")],
-  ["y", () => addNodeAtMouse("y1")],
-  ["u", () => addNodeAtMouse("y2")],
-  ["d", () => duplicateSelected()],
-  ["t", () => (world = addTrain(world, mousePos))],
-]);
-
-function findRailedPosition(
-  flatNodes: readonly FlatTrackNode[],
-  trackNodeId: string,
-  pathName: string,
-  t: number,
+function findNearestPathEndpoint(
+  tx: Tx2,
+  nodes: readonly FlatTrackNode[],
+  avoidNodeId: string,
 ) {
-  const trackNode = flatNodes.find((node) => node.id === trackNodeId)!;
-  const path = trackNode.paths.get(pathName)!;
-  return path.path(t);
+  const EPSILON = 0.1;
+  for (const node of nodes) {
+    if (node.id === avoidNodeId) continue;
+    for (const [pathName, { length, path }] of node.paths) {
+      const startTx = path(0);
+      if (
+        Vec2.dist(startTx.p, tx.p) < EPSILON &&
+        Tx2.angleBetween(startTx.r, tx.r) < 10
+      ) {
+        return { node, pathName, t: 0 };
+      }
+      const endTx = path(length);
+      if (
+        Vec2.dist(endTx.p, tx.p) < EPSILON &&
+        Tx2.angleBetween(endTx.r, tx.r) < 10
+      ) {
+        return { node, pathName, t: length };
+      }
+    }
+  }
 }
-
-function findNearestTrackPath(
-  flatTracks: readonly FlatTrackNode[],
-  targetTx: Tx2,
-) {
-  const TRACK_CONSIDERATION_DIST = 200;
-  const TRACK_DIST_LIMIT = 50;
-  const candidateTracks = flatTracks
-    .map((node) => {
-      return { node, dist: Vec2.dist(node.tx.p, targetTx.p) };
-    })
-    .filter(({ dist }) => dist < TRACK_CONSIDERATION_DIST)
-    .sort((a, b) => a.dist - b.dist);
-
-  const pathPoints = candidateTracks
-    .map(({ node }) => {
-      return Array.from(node.paths.entries())
-        .map(([pathName, path]) => ({ pathName, path }))
-        .map(({ pathName, path }) => {
-          const points: {
-            node: FlatTrackNode;
-            pathName: string;
-            t: number;
-            tx: Tx2;
-          }[] = [];
-          const PATH_POINT_SPACING = 1;
-          for (let t = 0; t <= path.length; t += PATH_POINT_SPACING) {
-            points.push({ node, pathName, t, tx: path.path(t) });
-          }
-          return points;
-        })
-        .flat();
-    })
-    .flat()
-    .map(({ tx, ...rest }) => {
-      const reverse = Tx2.angleBetween(tx.r, targetTx.r) > 90;
-      return {
-        ...rest,
-        tx: reverse ? Tx2.rotate(tx, 180) : tx,
-        dist: Vec2.dist(tx.p, targetTx.p),
-        reverse: Tx2.angleBetween(tx.r, targetTx.r) > 90,
-      };
-    })
-    .filter(({ dist }) => dist < TRACK_DIST_LIMIT)
-    .sort((a, b) => a.dist - b.dist);
-
-  return pathPoints[0];
-}
-
-window.addEventListener("hashchange", m.redraw);

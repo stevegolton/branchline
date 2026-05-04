@@ -49,3 +49,5 @@ export function startDrag(
   element.addEventListener("pointermove", onPointerMove);
   element.addEventListener("pointerup", onPointerUp);
 }
+
+export type MithrilEvent<T extends Event> = T & { redraw: boolean };

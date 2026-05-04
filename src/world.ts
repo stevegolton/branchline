@@ -1,6 +1,6 @@
 import { produce, type Draft } from "immer";
 import { Tx2, Vec2 } from "./geom";
-import type { trackRegistry } from "./track_registry";
+import { trackRegistry } from "./track_registry";
 import { uuid } from "./utils";
 
 // This is the shape of the state that defines the tracks - this is what is
@@ -53,17 +53,12 @@ export interface TrackParent {
   readonly port: string;
 }
 
-export function empty(): World {
-  return produce(
-    {
-      offset: Vec2.identity(),
-      tracks: [],
-      trains: [],
-      selectedId: null,
-    },
-    (x) => x,
-  );
-}
+export const emptyWorld: World = {
+  offset: Vec2.identity(),
+  tracks: [],
+  trains: [],
+  selectedId: null,
+};
 
 export function findTrackById(
   state: Draft<World>,
@@ -362,4 +357,50 @@ export function removeSelected(world: World): World {
   newWorld = removeTrain(newWorld, selectedId);
   newWorld = deselect(newWorld);
   return newWorld;
+}
+
+// Duplicate the currently selected track node, attaching the new node to the
+// first port of the selected one. If there are no empty ports, the new node
+// will be placed at @at.
+export function duplicateSelected(world: World, at: Vec2): World {
+  const selectedId = world.selectedId;
+  if (!selectedId) return world;
+
+  return produce(world, (draft) => {
+    const foundNode = findTrackById(draft, selectedId);
+    if (!foundNode) return;
+
+    // Find the first empty port on the selected node
+    const manifest = trackRegistry[foundNode.node.kind];
+    let emptyPortName: string | undefined;
+    for (const [portName] of manifest.ports) {
+      if (!foundNode.node.dockedNodes[portName]) {
+        // This port is empty - we'll dock the new node here
+        emptyPortName = portName;
+      }
+    }
+
+    const node = foundNode.node;
+    const newId = uuid();
+    const newNode: Track = {
+      id: newId,
+      kind: node.kind,
+      flipped: node.flipped,
+      dockedNodes: {},
+    };
+
+    if (!emptyPortName) {
+      console.warn(
+        "Unable to duplicate node, putting the new node under the mouse instead",
+      );
+      draft.tracks.push({
+        ...newNode,
+        tx: { p: at, r: 0 },
+      });
+    } else {
+      foundNode.node.dockedNodes[emptyPortName] = newNode;
+    }
+
+    draft.selectedId = newId;
+  });
 }
