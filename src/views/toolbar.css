@@ -1,0 +1,94 @@
+.toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #000;
+  user-select: none;
+  z-index: 10;
+  background: #fff;
+  border: 1px solid #000;
+  padding: 10px 12px;
+  min-width: 220px;
+}
+
+.toolbar button {
+  display: inline-block;
+  margin-top: 6px;
+  margin-right: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: #000;
+  color: #fff;
+}
+
+.toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  background: #fff;
+  border: 1px solid #000;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.project-row.active {
+  background: #000;
+  color: #fff;
+}
+
+.project-row.active .project-row__date {
+  color: #ccc;
+}
+
+.project-row__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-row__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.project-row__date {
+  font-size: 10px;
+  color: #666;
+}
+
+.project-row__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.project-row.active .project-row__btn {
+  background: #fff;
+  color: #000;
+}
+
+.project-row.active .project-row__btn:hover {
+  background: #000;
+  color: #fff;
+  border-color: #fff;
+}

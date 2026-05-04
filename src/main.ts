@@ -1,4 +1,5 @@
 import m from "mithril";
-import { AppV2 } from "./appv2";
+import { App } from "./views/app";
+import "./main.css";
 
-m.mount(document.body, AppV2);
+m.mount(document.body, App);

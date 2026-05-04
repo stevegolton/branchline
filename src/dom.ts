@@ -1,20 +1,5 @@
 import m from "mithril";
 
-// Adds an event listener to a DOM element, returning a disposable to remove it.
-export function bindEventListener<K extends keyof HTMLElementEventMap>(
-  element: EventTarget,
-  event: K,
-  handler: (event: HTMLElementEventMap[K]) => void,
-  options?: AddEventListenerOptions,
-): { dispose: () => void } {
-  element.addEventListener(event, handler as EventListener, options);
-  return {
-    dispose() {
-      element.removeEventListener(event, handler as EventListener);
-    },
-  };
-}
-
 export interface DragStartHandlers {
   onDragStart?: () => DragHandlers;
   onDragFailed?: () => void;

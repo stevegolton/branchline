@@ -45,68 +45,8 @@ export function uuid(): string {
 
 export function createEmptyState(): GameState {
   return {
-    rootTrackNodes: [
-      {
-        id: uuid(),
-        kind: "a1",
-        flipped: false,
-        tx: { p: { x: 500, y: 500 }, r: 0 },
-        dockedNodes: {
-          out: {
-            id: uuid(),
-            kind: "a1",
-            flipped: false,
-            dockedNodes: {
-              out: {
-                id: uuid(),
-                kind: "e1",
-                flipped: true,
-                dockedNodes: {
-                  out: {
-                    id: uuid(),
-                    kind: "e1",
-                    flipped: false,
-                    dockedNodes: {
-                      out: {
-                        id: uuid(),
-                        kind: "y1",
-                        flipped: false,
-                        dockedNodes: {
-                          curve: {
-                            id: uuid(),
-                            kind: "e1",
-                            flipped: false,
-                            dockedNodes: {},
-                          },
-                          straight: {
-                            id: uuid(),
-                            kind: "e1",
-                            flipped: false,
-                            dockedNodes: {},
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    ],
-    trains: [
-      {
-        kind: "derailed",
-        id: uuid(),
-        tx: { p: { x: 600, y: 600 }, r: 0 },
-      },
-      {
-        kind: "derailed",
-        id: uuid(),
-        tx: { p: { x: 300, y: 300 }, r: 45 },
-      },
-    ],
+    rootTrackNodes: [],
+    trains: [],
     selectedId: null,
   };
 }

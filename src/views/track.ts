@@ -1,6 +1,7 @@
 import m from "mithril";
 import { Tx2 } from "../geom";
 import classNames from "classnames";
+import "./track.css";
 
 export interface TrackPieceAttrs extends m.Attributes {
   readonly tx: Tx2;

@@ -1,6 +1,7 @@
 import m from "mithril";
 import { Tx2 } from "../geom";
 import classNames from "classnames";
+import "./train.css";
 
 export interface TrainViewAttrs extends m.Attributes {
   readonly tx: Tx2;

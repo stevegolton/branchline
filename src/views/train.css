@@ -1,0 +1,24 @@
+.train {
+  position: absolute;
+  transform-origin: 0 50%;
+  width: 0;
+  height: 0;
+  top: 0;
+  left: 0;
+  cursor: move;
+}
+
+.train::before {
+  content: "";
+  position: absolute;
+  width: 128px;
+  height: 64px;
+  border: solid 2px green;
+  background: white;
+  transform: translate(-50%, -50%);
+  border-radius: 0 10px 10px 0;
+}
+
+.train.selected::before {
+  border-color: rgb(43, 97, 215);
+}

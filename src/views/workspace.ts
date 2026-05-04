@@ -1,6 +1,7 @@
 import m from "mithril";
 import { Vec2 } from "../geom";
 import { startDrag } from "../dom";
+import "./workspace.css";
 
 export interface WorkspaceAttrs extends m.Attributes {
   readonly offset: Vec2;

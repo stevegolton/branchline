@@ -1,9 +1,10 @@
 import m from "mithril";
+import "./toolbar.css";
 
 export interface ToolbarAttrs {
   readonly canUndo?: boolean;
   readonly canRedo?: boolean;
-  readonly onNewWorkspace?: () => void;
+  readonly onNewWorld?: () => void;
   readonly onUndo?: () => void;
   readonly onRedo?: () => void;
 }
@@ -45,7 +46,7 @@ export const Toolbar: m.Component<ToolbarAttrs> = {
           m("span", { style: { color: "crimson" } }, "red"),
           " = root",
         ]),
-        m("button", { onclick: attrs.onNewWorkspace }, "New Workspace"),
+        m("button", { onclick: attrs.onNewWorld }, "New World"),
         m(
           "button",
           { disabled: !attrs.canUndo, onclick: attrs.onUndo },
