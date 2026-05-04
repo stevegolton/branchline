@@ -36,7 +36,7 @@ describe('Vec2', () => {
   });
 
   it('returns the identity vector', () => {
-    expect(Vec2.ident()).toEqual({ x: 0, y: 0 });
+    expect(Vec2.identity()).toEqual({ x: 0, y: 0 });
   });
 });
 
@@ -44,12 +44,12 @@ describe('Tx2', () => {
   const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
 
   it('returns the identity transform', () => {
-    expect(Tx2.ident()).toEqual({ p: { x: 0, y: 0 }, r: 0 });
+    expect(Tx2.identity()).toEqual({ p: { x: 0, y: 0 }, r: 0 });
   });
 
   describe('multiply', () => {
     it('is identity when both operands are identity', () => {
-      expect(Tx2.multiply(Tx2.ident(), Tx2.ident())).toEqual({
+      expect(Tx2.multiply(Tx2.identity(), Tx2.identity())).toEqual({
         p: { x: 0, y: 0 },
         r: 0,
       });

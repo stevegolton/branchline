@@ -3,13 +3,25 @@ import m from "mithril";
 import { startDrag } from "../dom";
 import { Tx2, Vec2 } from "../geom";
 import {
-  createEmptyState,
-  findTrackNodeById,
-  uuid,
-  type GameState,
-  type TrackNode,
+  empty,
+  findTrackById,
+  type World,
+  type Track,
   type Train,
-} from "../model";
+  moveRootTrack,
+  dockTrack,
+  moveTrain,
+  dockTrainToTrack,
+  addRootTrack,
+  addTrain,
+  selectEntity,
+  undockTrack,
+  derailTrain,
+  rotateSelected,
+  flipSelected,
+  removeSelected,
+  deselect,
+} from "../world";
 import { createProjectStore } from "../project_store";
 import { trackRegistry } from "../track_registry";
 import type { Path, Port } from "../types";
@@ -22,13 +34,14 @@ import { createWorkspace } from "../workspace";
 import { assertDefined } from "../assert";
 import { Toolbox, ToolboxItem } from "./toolbox";
 import "./app.css";
+import { uuid } from "../utils";
 
 function getCurrentHash(): string | null {
   const match = location.hash.match(/^#\/project\/([0-9a-fA-F-]+)$/);
   return match ? match[1]! : null;
 }
 
-let state = produce(createEmptyState(), (x) => x);
+let world = empty();
 
 type FlatPort = Port & { readonly occupied: boolean };
 
@@ -43,10 +56,10 @@ interface FlatTrackNode {
 }
 
 // Flattens the game state into a list of absolute track positions where each track node and each path is
-function flatten(state: GameState) {
+function flatten(state: World) {
   const flatTrackNodes: FlatTrackNode[] = [];
-  for (const rootNode of state.rootTrackNodes) {
-    const addFlatNode = (node: TrackNode, tx: Tx2, isRoot: boolean) => {
+  for (const rootNode of state.tracks) {
+    const addFlatNode = (node: Track, tx: Tx2, isRoot: boolean) => {
       // A flipped track mirrors its local Y axis. Tx2 has no scale component,
       // so we bake the mirror into each port's local coordinates before
       // composing with the track's world transform.
@@ -109,20 +122,19 @@ let mousePos: Vec2 = { x: 0, y: 0 };
 
 export function App(): m.Component {
   let previousUuid: string | null = null;
-  let workspaceOffset: Vec2 = { x: 0, y: 0 };
   let workspace = createWorkspace({ tracks: [] });
   const store = createProjectStore();
   let ghostTrain: Tx2 | undefined;
   let ghostTrackNode: FlatTrackNode | undefined;
 
   function saveProject() {
-    const uuid = getCurrentHash();
-    if (uuid) {
-      store.saveProject(uuid, workspace.state);
+    const currentId = getCurrentHash();
+    if (currentId) {
+      store.saveProject(currentId, workspace.state);
     } else {
-      const uuid = crypto.randomUUID();
-      store.saveProject(uuid, workspace.state);
-      location.hash = `#/project/${uuid}`;
+      const newId = uuid();
+      store.saveProject(newId, workspace.state);
+      location.hash = `#/project/${newId}`;
     }
   }
 
@@ -173,7 +185,7 @@ export function App(): m.Component {
         );
       }
 
-      const flatNodes = flatten(state);
+      const flatNodes = flatten(world);
       const trackNodes = flatNodes.map((node) => {
         return m(
           TrackView,
@@ -181,25 +193,23 @@ export function App(): m.Component {
             key: node.id,
             tx: node.tx,
             flipped: node.flipped,
-            selected: node.id === state.selectedId,
+            selected: node.id === world.selectedId,
             isRoot: node.isRoot,
             onpointerdown(e: PointerEvent) {
-              state = produce(state, (draft) => {
-                draft.selectedId = node.id;
-              });
+              world = selectEntity(world, node.id);
               e.stopPropagation();
               let dragPos = node.tx;
               startDrag(e, e.currentTarget as HTMLElement, 4, {
                 onDragStart: () => {
                   // Undock this node - noop if it's a root node
-                  undockNode(node.id, node.tx);
+                  world = undockTrack(world, node.id, node.tx);
                   return {
                     onDrag(deltaX, deltaY) {
                       dragPos = Tx2.translate(dragPos, {
                         x: deltaX,
                         y: deltaY,
                       });
-                      moveNode(node.id, dragPos.p);
+                      world = moveRootTrack(world, node.id, dragPos.p);
                       const trackPort = findDockTarget(
                         flatNodes,
                         dragPos,
@@ -221,7 +231,8 @@ export function App(): m.Component {
                         node.id,
                       );
                       if (trackPort) {
-                        dockTrack(
+                        world = dockTrack(
+                          world,
                           node.id,
                           trackPort.node.id,
                           trackPort.portName,
@@ -238,7 +249,7 @@ export function App(): m.Component {
         );
       });
 
-      const trainNodes = state.trains.map((train) => {
+      const trainNodes = world.trains.map((train) => {
         function findTrainTx() {
           if (train.kind === "derailed") {
             return train.tx;
@@ -257,32 +268,26 @@ export function App(): m.Component {
         return m(TrainView, {
           key: train.id,
           tx: trainTx,
-          selected: train.id === state.selectedId,
+          selected: train.id === world.selectedId,
           onpointerdown(e: PointerEvent) {
-            selectTrain(train.id);
+            world = selectEntity(world, train.id);
             e.stopPropagation();
             let dragPos = trainTx;
             startDrag(e, e.currentTarget as HTMLElement, 4, {
               onDragStart: () => {
-                derailTrain(train.id, dragPos);
+                world = derailTrain(world, train.id, dragPos);
                 return {
-                  onDrag(deltaX, deltaY) {
-                    dragPos = Tx2.translate(dragPos, {
-                      x: deltaX,
-                      y: deltaY,
-                    });
-                    moveTrain(train.id, dragPos.p);
+                  onDrag(dx, dy) {
+                    dragPos = Tx2.translate(dragPos, { x: dx, y: dy });
+                    world = moveTrain(world, train.id, dragPos.p);
                     const trackPath = findNearestTrackPath(flatNodes, dragPos);
                     ghostTrain = trackPath?.tx;
                   },
                   onDragEnd() {
-                    console.log(
-                      "Drag ended, finding nearest track for train",
-                      train.id,
-                    );
                     const trackPath = findNearestTrackPath(flatNodes, dragPos);
                     if (trackPath) {
-                      dockTrainToTrack(
+                      world = dockTrainToTrack(
+                        world,
                         train.id,
                         trackPath.node.id,
                         trackPath.t,
@@ -294,7 +299,6 @@ export function App(): m.Component {
                   },
                 };
               },
-              onDragFailed: () => selectTrain(train.id),
             });
           },
         });
@@ -353,28 +357,28 @@ export function App(): m.Component {
             m(
               ToolboxItem,
               {
-                onclick: () => addNewNode("a1"),
+                onclick: () => addNodeAtMouse("a1"),
               },
               trackRegistry["a1"].view(),
             ),
             m(
               ToolboxItem,
               {
-                onclick: () => addNewNode("e1"),
+                onclick: () => addNodeAtMouse("e1"),
               },
               trackRegistry["e1"].view(),
             ),
             m(
               ToolboxItem,
               {
-                onclick: () => addNewNode("y1"),
+                onclick: () => addNodeAtMouse("y1"),
               },
               trackRegistry["y1"].view(),
             ),
             m(
               ToolboxItem,
               {
-                onclick: () => addNewNode("y2"),
+                onclick: () => addNodeAtMouse("y2"),
               },
               trackRegistry["y2"].view(),
             ),
@@ -383,14 +387,15 @@ export function App(): m.Component {
         m(
           Workspace,
           {
-            offset: workspaceOffset,
+            offset: world.offset,
             onpan(offset) {
-              workspaceOffset = offset;
+              console.log("Panning workspace to", offset);
+              world = produce(world, (draft) => {
+                draft.offset = offset;
+              });
             },
             onclick() {
-              state = produce(state, (draft) => {
-                draft.selectedId = null;
-              });
+              world = deselect(world);
             },
           },
           ghostTrackNode &&
@@ -419,10 +424,10 @@ export function App(): m.Component {
 // Duplicate the currently selected track node, attaching the new node to the
 // first port of the selected one.
 function duplicateSelected() {
-  const selectedId = state.selectedId;
+  const selectedId = world.selectedId;
   if (!selectedId) return;
-  state = produce(state, (draft) => {
-    const foundNode = findTrackNodeById(draft, selectedId);
+  world = produce(world, (draft) => {
+    const foundNode = findTrackById(draft, selectedId);
     if (!foundNode) return;
 
     // Find the first empty port on the selected node
@@ -437,7 +442,7 @@ function duplicateSelected() {
 
     const node = foundNode.node;
     const newId = uuid();
-    const newNode: TrackNode = {
+    const newNode: Track = {
       id: newId,
       kind: node.kind,
       flipped: node.flipped,
@@ -448,7 +453,7 @@ function duplicateSelected() {
       console.warn(
         "Unable to duplicate node, putting the new node under the mouse instead",
       );
-      draft.rootTrackNodes.push({
+      draft.tracks.push({
         ...newNode,
         tx: { p: mousePos, r: 0 },
       });
@@ -460,18 +465,8 @@ function duplicateSelected() {
   });
 }
 
-function addNewNode(kind: keyof typeof trackRegistry, at: Vec2 = mousePos) {
-  state = produce(state, (draft) => {
-    const id = uuid();
-    draft.rootTrackNodes.push({
-      id: id,
-      kind,
-      flipped: false,
-      dockedNodes: {},
-      tx: { p: at, r: 0 },
-    });
-    draft.selectedId = id;
-  });
+function addNodeAtMouse(kind: keyof typeof trackRegistry) {
+  world = addRootTrack(world, kind, mousePos);
 }
 
 function findDockTarget(
@@ -498,8 +493,8 @@ function findDockTarget(
 
 function tick() {
   m.redraw();
-  const flatNodes = flatten(state);
-  state = produce(state, (draft) => {
+  const flatNodes = flatten(world);
+  world = produce(world, (draft) => {
     draft.trains = draft.trains.map((train) => {
       return runTrainTick(flatNodes, train);
     });
@@ -517,11 +512,17 @@ function findNearestPathEndpoint(
     if (node.id === avoidNodeId) continue;
     for (const [pathName, { length, path }] of node.paths) {
       const startTx = path(0);
-      if (Vec2.dist(startTx.p, tx.p) < EPSILON) {
+      if (
+        Vec2.dist(startTx.p, tx.p) < EPSILON &&
+        Tx2.angleBetween(startTx.r, tx.r) < 10
+      ) {
         return { node, pathName, t: 0 };
       }
       const endTx = path(length);
-      if (Vec2.dist(endTx.p, tx.p) < EPSILON) {
+      if (
+        Vec2.dist(endTx.p, tx.p) < EPSILON &&
+        Tx2.angleBetween(endTx.r, tx.r) < 10
+      ) {
         return { node, pathName, t: length };
       }
     }
@@ -601,53 +602,18 @@ function runTrainTick(nodes: readonly FlatTrackNode[], train: Train): Train {
 }
 
 const keyMap: Map<string, () => void> = new Map([
-  ["f", flipSelected],
-  ["q", () => rotateSelectedNode("ccw")],
-  ["e", () => rotateSelectedNode("cw")],
-  ["Delete", removeSelected],
-  ["Backspace", removeSelected],
-  ["n", () => addNewNode("a1", mousePos)],
-  ["c", () => addNewNode("e1", mousePos)],
-  ["y", () => addNewNode("y1", mousePos)],
-  ["u", () => addNewNode("y2", mousePos)],
+  ["f", () => (world = flipSelected(world))],
+  ["q", () => (world = rotateSelected(world, "ccw"))],
+  ["e", () => (world = rotateSelected(world, "cw"))],
+  ["Delete", () => (world = removeSelected(world))],
+  ["Backspace", () => (world = removeSelected(world))],
+  ["n", () => addNodeAtMouse("a1")],
+  ["c", () => addNodeAtMouse("e1")],
+  ["y", () => addNodeAtMouse("y1")],
+  ["u", () => addNodeAtMouse("y2")],
   ["d", () => duplicateSelected()],
-  ["t", () => addTrain(mousePos)],
+  ["t", () => (world = addTrain(world, mousePos))],
 ]);
-
-function addTrain(position: Vec2) {
-  state = produce(state, (draft) => {
-    draft.trains.push({
-      id: uuid(),
-      kind: "derailed",
-      tx: { p: position, r: 0 },
-    });
-  });
-}
-
-function derailTrain(trainId: string, tx: Tx2) {
-  state = produce(state, (draft) => {
-    draft.trains = draft.trains.map((t) => {
-      if (t.id === trainId && t.kind === "railed") {
-        return {
-          id: t.id,
-          kind: "derailed",
-          tx: {
-            ...tx,
-            r: Math.round(tx.r / 45) * 45,
-          },
-        };
-      } else {
-        return t;
-      }
-    });
-  });
-}
-
-function selectTrain(trainId: string) {
-  state = produce(state, (draft) => {
-    draft.selectedId = trainId;
-  });
-}
 
 function findRailedPosition(
   flatNodes: readonly FlatTrackNode[],
@@ -706,156 +672,6 @@ function findNearestTrackPath(
     .sort((a, b) => a.dist - b.dist);
 
   return pathPoints[0];
-}
-
-function dockTrainToTrack(
-  trainId: string,
-  nodeId: string,
-  t: number,
-  pathName: string,
-  reverse: boolean,
-) {
-  state = produce(state, (draft) => {
-    draft.trains = draft.trains.map((train): Train => {
-      if (train.id === trainId) {
-        console.log("Docking train", trainId, "to track", nodeId, "at t =", t);
-        return {
-          id: train.id,
-          kind: "railed",
-          trackNodeId: nodeId,
-          reverse: reverse,
-          velocity: 0,
-          t,
-          pathName,
-        };
-      } else {
-        return train;
-      }
-    });
-  });
-}
-
-function moveTrain(id: string, pos: Vec2) {
-  state = produce(state, (draft) => {
-    const draftTrain = draft.trains.find((t) => t.id === id);
-    if (!draftTrain || draftTrain.kind !== "derailed") return;
-    draftTrain.tx.p = pos;
-  });
-}
-
-// Undocks a node from its parent and moves it to a given transform.
-function undockNode(id: string, moveTo: Tx2) {
-  state = produce(state, (draft) => {
-    const draftTrackNode = findTrackNodeById(draft, id);
-    if (!draftTrackNode) return;
-    if (draftTrackNode.parent) {
-      // If we have a parent, undock it from current parent and push into root nodes
-      delete draftTrackNode.parent.node.dockedNodes[draftTrackNode.parent.port];
-      draft.rootTrackNodes.push({
-        ...draftTrackNode.node,
-        tx: moveTo,
-      });
-    }
-  });
-}
-
-function dockTrack(id: string, targetNodeId: string, targetPortName: string) {
-  state = produce(state, (draft) => {
-    const trackNode = findTrackNodeById(draft, id);
-    const targetNode = findTrackNodeById(draft, targetNodeId);
-    if (!trackNode || !targetNode) return;
-    // Attach the track node to the target node at the target port
-    targetNode.node.dockedNodes[targetPortName] = trackNode.node;
-    // Remove the track node from the root nodes if it's there
-    draft.rootTrackNodes = draft.rootTrackNodes.filter(
-      (n) => n.id !== trackNode.node.id,
-    );
-  });
-}
-
-// Move a (root) node to a new position
-function moveNode(id: string, newPosition: Vec2) {
-  state = produce(state, (draft) => {
-    const foundNode = draft.rootTrackNodes.find((node) => id === node.id);
-    if (foundNode) {
-      foundNode.tx.p = newPosition;
-    }
-  });
-}
-
-function rotateSelectedNode(direction: "cw" | "ccw") {
-  // Rotate the selected track node 45° clockwise, keeping docked nodes in place.
-  const angle = direction === "cw" ? 45 : -45;
-  state = produce(state, (draft) => {
-    draft.rootTrackNodes.forEach((node) => {
-      if (node.id === draft.selectedId) {
-        node.tx = Tx2.rotate(node.tx, angle);
-      }
-    });
-    draft.trains.forEach((train) => {
-      if (train.kind === "derailed" && train.id === draft.selectedId) {
-        train.tx = Tx2.rotate(train.tx, angle);
-      }
-    });
-  });
-}
-
-function flipSelected() {
-  // Flip the selectedd track node
-  state = produce(state, (draft) => {
-    if (!draft.selectedId) return;
-    const found = findTrackNodeById(draft, draft.selectedId);
-    if (found) found.node.flipped = !found.node.flipped;
-
-    const foundTrain = draft.trains.find((t) => draft.selectedId === t.id);
-    if (foundTrain) {
-      if (foundTrain.kind === "railed") {
-        foundTrain.reverse = !foundTrain.reverse;
-        foundTrain.velocity = 0; // Stop the train when flipping, to avoid weirdness with flipped controls
-      }
-    }
-  });
-}
-
-// Remove a given track node or any of its children, as well as any trains that
-// were on the node or any of its children.
-function removeSelected() {
-  const selectedId = state.selectedId;
-  if (!selectedId) return;
-
-  // Delete the selected track node
-  state = produce(state, (draft) => {
-    // Remove the track node
-    const foundNode = findTrackNodeById(draft, selectedId);
-    if (foundNode) {
-      if (foundNode.parent) {
-        delete foundNode.parent.node.dockedNodes[foundNode.parent.port];
-      } else {
-        draft.rootTrackNodes = draft.rootTrackNodes.filter(
-          (n) => n.id !== foundNode.node.id,
-        );
-      }
-
-      const removedNodeIds = new Set<string>();
-      const addNodeAndChildrenToSet = (node: TrackNode) => {
-        removedNodeIds.add(node.id);
-        Object.values(node.dockedNodes).forEach(addNodeAndChildrenToSet);
-      };
-      addNodeAndChildrenToSet(foundNode.node);
-
-      // Remove any trains that were on the removed node or its children
-      draft.trains = draft.trains.filter((train) => {
-        if (train.kind === "derailed") {
-          return true; // Derailed trains can stay, since they aren't attached to a track
-        } else {
-          return !removedNodeIds.has(train.trackNodeId);
-        }
-      });
-    }
-
-    // If a train was selected, remove it too
-    draft.trains = draft.trains.filter((t) => selectedId !== t.id);
-  });
 }
 
 window.addEventListener("hashchange", m.redraw);

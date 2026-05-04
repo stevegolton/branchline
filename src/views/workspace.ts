@@ -9,42 +9,50 @@ export interface WorkspaceAttrs extends m.Attributes {
   onclick?(): void;
 }
 
-export const Workspace: m.Component<WorkspaceAttrs> = {
-  view({ attrs, children }) {
-    const { onclick, onpan, offset, ...rest } = attrs;
-    return m(
-      ".workspace",
-      {
-        ...rest,
-        onpointerdown(e: PointerEvent) {
-          let currentOffset = offset;
-          startDrag(e, e.currentTarget as HTMLElement, 4, {
-            onDragStart: () => {
-              return {
-                onDrag(deltaX, deltaY) {
-                  currentOffset = Vec2.add(currentOffset, {
-                    x: deltaX,
-                    y: deltaY,
-                  });
-                  onpan?.(currentOffset);
-                },
-              };
-            },
-            onDragFailed() {
-              onclick?.();
-            },
-          });
-        },
-      },
-      m(
-        ".workspace-shim",
+export function Workspace(): m.Component<WorkspaceAttrs> {
+  let localOffset: Vec2 | undefined;
+  return {
+    view({ attrs, children }) {
+      const { onclick, onpan, offset, ...rest } = attrs;
+      return m(
+        ".workspace",
         {
-          style: {
-            transform: Vec2.css(offset),
+          ...rest,
+          onpointerdown(e: PointerEvent) {
+            startDrag(e, e.currentTarget as HTMLElement, 4, {
+              onDragStart: () => {
+                let currentOffset = offset;
+                localOffset = offset;
+                return {
+                  onDrag(deltaX, deltaY) {
+                    currentOffset = Vec2.add(currentOffset, {
+                      x: deltaX,
+                      y: deltaY,
+                    });
+                    localOffset = currentOffset;
+                  },
+                  onDragEnd() {
+                    onpan?.(currentOffset);
+                    localOffset = undefined;
+                  },
+                };
+              },
+              onDragFailed() {
+                onclick?.();
+              },
+            });
           },
         },
-        children,
-      ),
-    );
-  },
-};
+        m(
+          ".workspace-shim",
+          {
+            style: {
+              transform: Vec2.css(localOffset ?? offset),
+            },
+          },
+          children,
+        ),
+      );
+    },
+  };
+}

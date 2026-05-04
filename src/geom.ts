@@ -25,7 +25,7 @@ export const Vec2 = {
   css(v: Vec2): string {
     return `translate(${v.x}px, ${v.y}px)`;
   },
-  ident() {
+  identity() {
     return { x: 0, y: 0 };
   },
 };
@@ -57,9 +57,9 @@ export const Tx2 = {
   translate(tx: Tx2, delta: Vec2): Tx2 {
     return { p: Vec2.add(tx.p, delta), r: tx.r };
   },
-  ident() {
+  identity() {
     return {
-      p: Vec2.ident(),
+      p: Vec2.identity(),
       r: 0,
     };
   },
