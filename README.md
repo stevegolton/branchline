@@ -92,3 +92,7 @@ never touch this again, but if I did, this is what I'd like to do next:
 - [ ] Canvas or WebGL renderer (right now it's DOM elements and SVG).
 - [ ] Mobile support.
 - [ ] Many more pieces!
+
+## Reference
+
+- https://woodenrailway.info/track/brio-track-guide
