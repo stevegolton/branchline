@@ -28,18 +28,22 @@ export type Train = DerailedTrain | RailedTrain;
 
 export interface DerailedTrain {
   readonly kind: "derailed";
+  readonly type: "carriage" | "locomotive"; // The type of train this is, which determines its shape.
   readonly id: string; // Unique ID for this train.
   readonly tx: Tx2; // The absolute position of this train in the workspace.
+  readonly child?: Train;
 }
 
 export interface RailedTrain {
   readonly kind: "railed";
+  readonly type: "carriage" | "locomotive"; // The type of train this is, which determines its shape.
   readonly id: string; // A unique id for this train.
   readonly trackNodeId: string; // The ID of the track node that this train is currently on.
   readonly pathName: string; // The ID of the path that this train is currently on (which determines how it moves along the track).
   readonly t: number; // The progress through this piece's path.
   readonly reverse: boolean; // Whether the train is facing forwards of backwards on the track node.
   readonly velocity: number;
+  readonly child?: Train;
 }
 
 export type RotateDirection = "cw" | "ccw";
@@ -234,6 +238,20 @@ export function addTrain(world: World, at: Vec2): World {
     draft.trains.push({
       id,
       kind: "derailed",
+      type: "locomotive",
+      tx: { p: at, r: 0 },
+    });
+    draft.selectedId = id;
+  });
+}
+
+export function addCarriage(world: World, at: Vec2): World {
+  const id = uuid();
+  return produce(world, (draft) => {
+    draft.trains.push({
+      id,
+      kind: "derailed",
+      type: "carriage",
       tx: { p: at, r: 0 },
     });
     draft.selectedId = id;
@@ -284,6 +302,7 @@ export function dockTrainToTrack(
         return {
           id: train.id,
           kind: "railed",
+          type: train.type,
           trackNodeId: nodeId,
           reverse: reverse,
           velocity: 0,
@@ -304,6 +323,7 @@ export function derailTrain(world: World, trainId: string, tx: Tx2) {
         return {
           id: t.id,
           kind: "derailed",
+          type: t.type,
           tx: {
             ...tx,
             r: Math.round(tx.r / 45) * 45,

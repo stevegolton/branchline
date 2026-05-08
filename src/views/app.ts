@@ -22,6 +22,7 @@ import {
   emptyWorld,
   duplicateSelected,
   panWorld,
+  addCarriage,
 } from "../world";
 import { trackRegistry } from "../track_registry";
 import type { Path, Port } from "../types";
@@ -125,7 +126,7 @@ export function App(): m.Component<AppAttrs> {
   let previousWorldId: string | undefined | null;
   let draggedTrain: { id: string; tx: Tx2 } | undefined;
   let draggedTrack: { id: string; tx: Tx2 } | undefined;
-  let ghostTrain: Tx2 | undefined;
+  let ghostTrain: { type: "locomotive" | "carriage"; tx: Tx2 } | undefined;
   let ghostTrackNode: FlatTrackNode | undefined;
   let running = true;
 
@@ -261,6 +262,7 @@ export function App(): m.Component<AppAttrs> {
         ["u", () => addNodeAtMouse("y2")],
         ["d", () => updateWorld((w) => duplicateSelected(w, mousePos))],
         ["t", () => updateWorld((w) => addTrain(w, mousePos))],
+        ["g", () => updateWorld((w) => addCarriage(w, mousePos))],
       ]);
 
       function findNearestTrackPath(
@@ -415,6 +417,7 @@ export function App(): m.Component<AppAttrs> {
         const trainTx = findTrainTx();
         return m(TrainView, {
           key: train.id,
+          type: train.type,
           tx: trainTx,
           selected: train.id === world.selectedId,
           oncontextmenu(e: PointerEvent) {
@@ -447,7 +450,11 @@ export function App(): m.Component<AppAttrs> {
                 tx: draggedPos,
               };
               const trackPath = findNearestTrackPath(flatNodes, draggedPos);
-              ghostTrain = trackPath?.tx;
+              if (trackPath) {
+                ghostTrain = { type: train.type, tx: trackPath.tx };
+              } else {
+                ghostTrain = undefined;
+              }
             }
           },
           onpointerup() {
@@ -596,7 +603,8 @@ export function App(): m.Component<AppAttrs> {
           m(".tracks", trackNodes),
           ghostTrain &&
             m(TrainView, {
-              tx: ghostTrain,
+              tx: ghostTrain.tx,
+              type: ghostTrain.type,
               className: "ghost",
             }),
           m(".trains", trainNodes),
@@ -618,6 +626,10 @@ function findRailedPosition(
 }
 
 function runTrainTick(nodes: readonly FlatTrackNode[], train: Train): Train {
+  if (train.type === "carriage") {
+    return train; // Carriages don't move on their own - they just follow the locomotive
+  }
+
   const TRAIN_SPEED_MAX = 3; // How much t changes per tick for a train moving at normal speed
   if (train.kind === "railed") {
     const trainVelocity =
