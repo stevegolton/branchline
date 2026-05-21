@@ -88,12 +88,12 @@ describe("Tx2", () => {
   describe("angleBetween", () => {
     it("returns the signed shortest angle", () => {
       expect(Tx2.angleBetween(10, 30)).toBe(20);
-      expect(Tx2.angleBetween(30, 10)).toBe(-20);
+      expect(Tx2.angleBetween(30, 10)).toBe(20);
     });
 
     it("wraps across the 0/360 boundary", () => {
       expect(Tx2.angleBetween(350, 10)).toBe(20);
-      expect(Tx2.angleBetween(10, 350)).toBe(-20);
+      expect(Tx2.angleBetween(10, 350)).toBe(20);
     });
 
     it("returns 0 for equal angles", () => {

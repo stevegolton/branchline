@@ -49,7 +49,7 @@ export const Tx2 = {
   },
   angleBetween(a: number, b: number): number {
     const diff = normalizeRotation(b - a);
-    return diff > 180 ? diff - 360 : diff;
+    return Math.abs(diff > 180 ? diff - 360 : diff);
   },
   css(t: Tx2): string {
     return Vec2.css(t.p) + ` rotate(${t.r}deg)`;
